@@ -1,0 +1,1232 @@
+{
+  "name": "Logistic_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -976,
+        96
+      ],
+      "id": "5e86f125-c719-4925-8551-4e83b41436f9",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Session ID: {{ $json.sessionId || $json.session_id }}\nOrder Type: {{ $json.orderType || $json.order_type }}\nDecision: {{ $json.decision }}\nPart Number: {{ $json.partNumber }}\nQuantity: {{ $json.quantity }}\nPurchase Order ID: {{ $json.poId || $json.poid }}\nCustomer Email: {{ $json.customerEmail || $json.email || 'procurement@mellanox-tech.co.il' }}\n\nInstructions:\n1. Inspect the Order Type and Decision above.\n2. If Order Type is \"RFQ\" or Decision is \"SKIP\", DO NOT call any tools. Return the SKIP JSON immediately.\n3. If Order Type is \"Order\"/\"PO\" or Decision is \"ORDER_NOW\", use the tools to verify the PO, update inventory for part number {{ $json.partNumber }}, and notify the customer at {{ $json.customerEmail || $json.email || 'procurement@mellanox-tech.co.il' }} that goods arrived and passed to Finance. Return ONLY valid JSON.",
+        "options": {
+          "systemMessage": "You are the Quality Assurance Warehouse Logistics Director for Electro-Tech Representatives Ltd.\n\n## YOUR ONLY JOB\nYou manage goods receiving, shipping, and inventory accuracy. You MUST inspect the input fields before calling any tools.\n\n## CRITICAL CHECK (RULE 0 - EXECUTE BEFORE ANYTHING ELSE)\n- Check the input fields `orderType` and `decision`.\n- IF `orderType` is \"RFQ\" OR `decision` is \"SKIP\":\n  1. DO NOT call any tools (`po_lookup`, `inventory_update`).\n  2. IMMEDIATELY return the SKIP JSON response below and terminate execution.\n\n- IF `orderType` is \"Order\", \"PO\", \"Purchase Order\", OR `decision` is \"ORDER_NOW\":\n  1. PROCEED to the MANDATORY STEPS below to process goods receiving.\n\n## YOUR TOOLS\nTool 1: `po_lookup` - Gets purchase order details using the input poId.\nTool 2: `inventory_update` - Updates stock levels using the input partNumber.\n\n## MANDATORY STEPS (FOR CONFIRMED PO ONLY)\nStep 1: Call `po_lookup` ONCE with the input poId.\nStep 2: Call `inventory_update` ONCE with the exact input partNumber to update stock.\nStep 3: Stop tool calls immediately and return valid raw JSON.\n\n## OUTPUT FORMAT FOR CONFIRMED PO (GOODS RECEIVED)\n{\n  \"sessionId\": \"{{ $json.sessionId }}\",\n  \"status\": \"SUCCESS\",\n  \"poId\": \"{{ $json.poId }}\",\n  \"partNumber\": \"{{ $json.partNumber }}\",\n  \"expectedQuantity\": {{ $json.quantity }},\n  \"receivedQuantity\": {{ $json.quantity }},\n  \"warehouseStatus\": \"RECEIVED\",\n  \"condition\": \"GOOD\",\n  \"newStockLevel\": {{ $json.quantity }},\n  \"customerNotified\": true,\n  \"nextAction\": \"FINANCE\",\n  \"summary\": \"Goods for PO {{ $json.poId }} received at Israel warehouse. Transferred to Finance for invoicing.\"\n}\n\n## CRITICAL RULES\n1. IF `orderType` == \"RFQ\" OR `decision` == \"SKIP\" -> NEVER CALL TOOLS, IMMEDIATELY RETURN SKIP JSON.\n2. Do NOT attempt to invoke email tools within this loop.\n3. Set `nextAction` to \"FINANCE\" when goods are received.\n4. ALWAYS return valid JSON."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -448,
+        112
+      ],
+      "id": "b5219d67-0967-4dc2-bc1b-07f32344f612",
+      "name": "Logistic_Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "return { json: { response: $input.item.json.output } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        48
+      ],
+      "id": "a58d809c-ffe3-4dd0-8719-06e6a40678a0",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc",
+          "mode": "list",
+          "cachedResultName": "Inventory_Master"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 213906504,
+          "mode": "list",
+          "cachedResultName": "Stock"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "partNumber"
+          ],
+          "schema": [
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStock",
+              "displayName": "currentStock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reorderPoint",
+              "displayName": "reorderPoint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "safetyStock",
+              "displayName": "safetyStock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierId",
+              "displayName": "supplierId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "leadTimeDays",
+              "displayName": "leadTimeDays",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "unitCost",
+              "displayName": "unitCost",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "warehouseLocation",
+              "displayName": "warehouseLocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "lastUpdated",
+              "displayName": "lastUpdated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pipeline",
+              "displayName": "pipeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStep",
+              "displayName": "currentStep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalSteps",
+              "displayName": "totalSteps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "poId",
+              "displayName": "poId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoteId",
+              "displayName": "quoteId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceId",
+              "displayName": "invoiceId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerId",
+              "displayName": "customerId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalAmountILS",
+              "displayName": "totalAmountILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceSent",
+              "displayName": "invoiceSent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nextAction",
+              "displayName": "nextAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "results",
+              "displayName": "results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "toolCallId",
+              "displayName": "toolCallId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "update",
+              "displayName": "update",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "response",
+              "displayName": "response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "finalSummary",
+              "displayName": "finalSummary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceILS",
+              "displayName": "customerPriceILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostILS",
+              "displayName": "supplierCostILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "orderType",
+              "displayName": "orderType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "goodsArrived",
+              "displayName": "goodsArrived",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostUSD",
+              "displayName": "supplierCostUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceUSD",
+              "displayName": "customerPriceUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -192,
+        320
+      ],
+      "id": "594eae86-b50e-4e7b-9931-ca2576690af7",
+      "name": "update_stock_tool",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Verify purchase order details. Input: poId (string). Returns: expected quantity, part number, supplier details.",
+        "documentId": {
+          "__rl": true,
+          "value": "1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc",
+          "mode": "list",
+          "cachedResultName": "Purchase_Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1497253811,
+          "mode": "list",
+          "cachedResultName": "POs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc/edit#gid=1497253811"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "poId",
+              "lookupValue": "={{ $json.poId }}"
+            }
+          ]
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "detectAutomatically"
+            }
+          },
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "FORMATTED_STRING"
+            }
+          },
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -544,
+        320
+      ],
+      "id": "ca627fe2-d51b-4c6b-a0c2-c310cd1e250d",
+      "name": "po_lookup",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Update inventory stock levels after receiving goods. Input: partNumber, newStockLevel. Returns: updated stock.",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc",
+          "mode": "list",
+          "cachedResultName": "Inventory_Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 213906504,
+          "mode": "list",
+          "cachedResultName": "Stock",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc/edit#gid=213906504"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "partNumber": "={{ $json.partNumber }}",
+            "description": "={{ $json.description }}",
+            "currentStock": "={{ $json.newStockLevel }}",
+            "reorderPoint": "={{ $json.reorderPoint }}",
+            "safetyStock": "={{ $json.safetyStock }}",
+            "supplierId": "={{ $json.supplierId }}",
+            "leadTimeDays": "={{ $json.leadTimeDays }}",
+            "unitCost": "={{ $json.unitCost }}",
+            "warehouseLocation": "={{ $json.warehouseLocation }}",
+            "lastUpdated": "={{ $json.lastUpdated }}",
+            "sessionId": "={{ $json.sessionId }}",
+            "pipeline": "={{ $json.pipeline }}",
+            "currentStep": "={{ $json.currentStep }}",
+            "totalSteps": "={{ $json.totalSteps }}",
+            "status": "={{ $json.status }}",
+            "poId": "={{ $json.poId }}",
+            "quoteId": "={{ $json.quoteId }}",
+            "invoiceId": "={{ $json.invoiceId }}",
+            "customerId": "={{ $json.customerId }}",
+            "customerEmail": "={{ $json.customerEmail }}",
+            "totalAmountILS": "={{ $json.totalAmountILS }}",
+            "invoiceSent": "={{ $json.invoiceSent }}",
+            "nextAction": "={{ $json.nextAction }}",
+            "data": "={{ $json.data }}",
+            "results": "={{ $json.results }}",
+            "id": "={{ $json.id }}",
+            "toolCallId": "={{ $json.toolCallId }}",
+            "customerPriceUSD": "={{ $json.customerPriceUSD }}",
+            "supplierCostUSD": "={{ $json.supplierCostUSD }}",
+            "goodsArrived": "={{ $json.goodsArrived }}",
+            "decision": "={{ $json.decision }}",
+            "orderType": "={{ $json.orderType }}",
+            "supplierCostILS": "={{ $json.supplierCostILS }}",
+            "customerPriceILS": "={{ $json.customerPriceILS }}",
+            "quantity": "={{ $json.quantity }}",
+            "finalSummary": "={{ $json.finalSummary }}",
+            "response": "={{ $json.response }}",
+            "update": "={{ $json.update }}"
+          },
+          "matchingColumns": [
+            "partNumber"
+          ],
+          "schema": [
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "currentStock",
+              "displayName": "currentStock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reorderPoint",
+              "displayName": "reorderPoint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "safetyStock",
+              "displayName": "safetyStock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "supplierId",
+              "displayName": "supplierId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "leadTimeDays",
+              "displayName": "leadTimeDays",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "unitCost",
+              "displayName": "unitCost",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "warehouseLocation",
+              "displayName": "warehouseLocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lastUpdated",
+              "displayName": "lastUpdated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pipeline",
+              "displayName": "pipeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "currentStep",
+              "displayName": "currentStep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "totalSteps",
+              "displayName": "totalSteps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "poId",
+              "displayName": "poId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quoteId",
+              "displayName": "quoteId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoiceId",
+              "displayName": "invoiceId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customerId",
+              "displayName": "customerId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "totalAmountILS",
+              "displayName": "totalAmountILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoiceSent",
+              "displayName": "invoiceSent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nextAction",
+              "displayName": "nextAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "results",
+              "displayName": "results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "toolCallId",
+              "displayName": "toolCallId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "update",
+              "displayName": "update",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "response",
+              "displayName": "response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "finalSummary",
+              "displayName": "finalSummary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customerPriceILS",
+              "displayName": "customerPriceILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "supplierCostILS",
+              "displayName": "supplierCostILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "orderType",
+              "displayName": "orderType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "goodsArrived",
+              "displayName": "goodsArrived",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "supplierCostUSD",
+              "displayName": "supplierCostUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customerPriceUSD",
+              "displayName": "customerPriceUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -368,
+        336
+      ],
+      "id": "5fdd688f-c735-4f73-b3a3-33fced9d6dd2",
+      "name": "inventory_update",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "57962a00-0b32-4522-888a-3585153d1019",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "SKIP",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "7367ab3d-ddea-41ca-80ba-3fe2b566d320",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "REJECTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "fcffee4d-d849-4a60-9c46-ba2e32d0ca40",
+              "leftValue": "={{ $json.quantity }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "5acbacf9-130f-4f5b-9941-3e6775e43e97",
+              "leftValue": "={{ $json.orderType }}",
+              "rightValue": "RFQ",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "c75f0d15-6766-43a6-9f49-bf6583d36c1b",
+              "leftValue": "={{ $json.orderType }}",
+              "rightValue": "RFI",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "07cbd1cf-fc63-4a75-bdb9-c552c02881b2",
+              "leftValue": "={{ $json.partNumber }}",
+              "rightValue": "NON_EXISTENT",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "4c83567b-9201-4ab6-abaa-eec0035df36a",
+              "leftValue": "={{ $json.partNumber }}",
+              "rightValue": "\"\"",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -816,
+        96
+      ],
+      "id": "e9b4bf38-3a1f-46a7-8f16-adcf266f5136",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: \"SKIPPED\",\n    decision: \"SKIP\",\n    nextAction: \"ADMIN_REVIEW\",\n    summary: \"Logistic Agent skipped execution due to RFI/RFQ or invalid quantity/part number.\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        16
+      ],
+      "id": "fea06b46-02bc-4439-a5b5-edb40111a00c",
+      "name": "Logistics Skip Handler"
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=Your order is ready - PO {{ $('When Executed by Another Workflow').first().json.poId || $json.poId }}",
+        "message": "=Hello,\n\nYour order with PO Number {{ $('When Executed by Another Workflow').first().json.poId || $json.poId }} for Part {{ $('When Executed by Another Workflow').first().json.partNumber || $json.partNumber }} (Quantity: {{ $('When Executed by Another Workflow').first().json.quantity || $json.quantity }}) has been successfully received and updated in our inventory.\n\nThe order has been transferred to the Finance department for invoice processing.\n\nBest regards,\nLogistics Team | Electro-Tech Representatives Ltd.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -80,
+        112
+      ],
+      "id": "eee34f6d-bb9f-46c4-ab53-1c06671f298e",
+      "name": "notify_customer",
+      "webhookId": "8acc1aee-f42b-4fb9-8522-78d58ae72817",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b-cloud",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        272
+      ],
+      "id": "ca79f2fb-ecd8-4376-9c9d-a1a67aeab7d8",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "cJuJhTz0PqFxzhEB",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Logistic_Agent": {
+      "main": [
+        [
+          {
+            "node": "notify_customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "update_stock_tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Logistic_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "po_lookup": {
+      "ai_tool": [
+        [
+          {
+            "node": "Logistic_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "inventory_update": {
+      "ai_tool": [
+        [
+          {
+            "node": "Logistic_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Logistics Skip Handler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Logistic_Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Logistics Skip Handler": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notify_customer": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Logistic_Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "70wXsnmVq4KlUDHv",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "de65af0c-c839-4ca8-a559-445e6aaec2c0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "yhlLYUZhGPF2s8J2",
+  "tags": []
+}

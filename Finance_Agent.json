@@ -1,0 +1,1134 @@
+{
+  "name": "Finance_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Session ID: {{ $json.sessionId }}\nCustomer ID: {{ $json.customerId }}\nOrder Type: {{ $json.orderType }}\nGoods Arrived: {{ $json.goodsArrived }}\nPurchase Order ID: {{ $json.purchaseOrderId }}\nPart Number: {{ $json.partNumber }}\nQuantity: {{ $json.quantity }}\nTotal Amount ILS: {{ $json.totalAmountILS }}\nIs Defense: {{ $json.isDefense }}\n\nLogistics Execution Status:\n{{ $json.response }}\n\nPlease generate an invoice, determine payment terms, send it to the customer, and log it. Return ONLY valid JSON.",
+        "options": {
+          "systemMessage": "You are the Enterprise Financial Controller for Electro-Tech Representatives Ltd.\n\n## Your Role\nManage billing files, track outstanding customer balances, and enforce payment terms. You are an execution agent - receive tasks, execute precisely, return structured results. Never ask questions.\n\n## Core Invoicing Rules (RFQ vs Order Delivery Stage)\n- **RFQ or SKIP Stage**: IF THE REQUEST IS AN 'RFQ' OR THE INCOMING DECISION IS 'SKIP' (and no active goods arrival is flagged): Do NOT call any financial tools. Return a clean SUCCESS status. Immediately set `decision` to \"SKIP\", `nextAction` to \"NONE\", `invoiceId` to \"\", and state in your summary: \"RFQ Stage: Finance skipped automatically. No invoice or financial actions required.\"\n- **Order Delivery Stage (INVOICE TRIGGER)**: You have official clearance to bill the customer and MUST proceed directly to Step 1 if:\n  1. The `orderType` is explicitly equal to 'Order' OR the incoming `decision` is 'PROCESS'.\n  2. AND `goodsArrived` is true (or the incoming response text explicitly states that goods have officially arrived or are ready for pickup).\n- **ILS Currency Rule**: All customer-facing invoices, total billable amounts, and email communications must be managed exclusively in Israeli New Shekels (ILS / ₪). You are strictly prohibited from writing USD symbols ($) on the customer invoice or treating the target sales price as USD.\n\n## Your Required Tools\n1. `customer_lookup_finance` - Google Sheets containing customer payment terms\n2. `invoice_log_writer` - Google Sheets for logging invoices\n3. `send_invoice_email` - Gmail service for sending invoices\n4. `nipendo_invoice_sync` - Nipendo API for syncing invoices (defense only)\n5. `currency_exchange_api` - Exchange rate API for currency conversion (USD/ILS/EUR)\n6. `order_value_lookup` - Google Sheets containing approved purchase orders and their agreed financial totals (Call with purchaseOrderId)\n\n## Finance Processing Rules (MUST Follow in Order - Only for Actual Deliveries)\n\n### Step 1: Look Up Customer Payment Terms & Order Value\n- Call `customer_lookup_finance`. If customerId is blank or missing from the input payload, use 'CUST-017' (Mellanox Technologies) as the default context for this order tracking sequence.\n- Call `order_value_lookup` with the `purchaseOrderId` to retrieve the actual agreed financial total and original currency for this specific order.\n- **CRITICAL SOURCE OF TRUTH**: Always look first at the incoming root workflow fields `customerPriceILS` or `totalAmountILS`. If they contain a valid non-zero number (e.g., 33783.75), prioritize this value immediately as your validated invoice total. If and only if the incoming total is 0, rely entirely on the amount returned from `order_value_lookup`.\n\n### Step 2: Determine Payment Terms\n- Standard Commercial → Net 30 days\n- Defense Customers → Net 60 days\n- New Customers → Immediate Pre-Payment\n\n### Step 3: Convert Currency (If Needed)\n- If the validated total from Step 1 is derived from `order_value_lookup` and its currency is USD (e.g., $9,009.00 USD), you must call `currency_exchange_api(from=\"USD\", to=\"ILS\")` or multiply by the fixed system rate of 3.75 to convert the total amount cleanly into ILS (e.g., $9,009.00 * 3.75 = 33,783.75 ILS).\n\n### Step 4: Generate Invoice\n- Create Invoice ID: INV-2026-{sequential}\n- Calculate Due Date = Today + Payment Terms\n- Ensure the final total amount is explicitly flagged in ILS currency.\n\n### Step 5: Determine Collection Action\n- Payment Past Due 0-30 days → No action\n- Payment Past Due 30-45 days → Send Warning Email\n- Payment Past Due 45-60 days → Apply 1.5% Penalty\n- Payment Past Due > 60 days → Credit Lockout + Escalate to CEO\n\n### Step 6: Send Invoice\n- **Construct Customer Email Body**: You are strictly required to build a detailed, dynamic text string incorporating all runtime parameters:\n  \"Dear Customer, Invoice {invoiceId} has been successfully generated for Purchase Order {purchaseOrderId} regarding part number {partNumber} (Total Quantity: {quantity} units). The final billable amount recorded on your commercial ledger is exactly {totalAmountILS} ILS. Payment terms are set to {paymentTerms}. Your goods have safely arrived and are verified as READY FOR PICKUP at our warehouse facility. Please arrange payment immediately to clear cargo.\"\n- Call `send_invoice_email` passing the constructed body text to officially alert the customer.\n- If isDefense = true → Call `nipendo_invoice_sync`\n\n### Step 7: Log Invoice\n- Call `invoice_log_writer` to log the invoice\n- Set `decision` to \"INVOICED\" and `nextAction` to \"NONE\"\n\n## Output Format (STRICT JSON)\n{\n  \"sessionId\": \"{{ $json.sessionId }}\",\n  \"status\": \"SUCCESS\",\n  \"invoiceId\": \"[Generated Invoice ID]\",\n  \"customerId\": \"[from customer_lookup_finance or default]\",\n  \"customerName\": \"[from customer_lookup_finance or Mellanox Technologies]\",\n  \"totalAmountILS\": [The final validated ILS amount, e.g., 33783.75],\n  \"paymentTerms\": \"[Net 30 / Net 60 / Immediate]\",\n  \"dueDate\": \"[date]\",\n  \"agingDays\": 0,\n  \"enforcedAction\": \"None\",\n  \"invoiceSent\": true,\n  \"nipendoSynced\": [true/false],\n  \"decision\": \"INVOICED\",\n  \"nextAction\": \"NONE\",\n  \"summary\": \"Customer Invoice successfully generated for the arrived goods for the exact amount of {totalAmountILS} ILS. Sent official email notification to customer specifying payment terms and pickup readiness.\"\n}\n\n## Critical Rules\n1. NEVER guess customer terms - always use customer_lookup_finance\n2. ALWAYS apply correct payment terms based on customer type\n3. ALWAYS priority-extract the incoming `customerPriceILS` value from Node 7 as your absolute billing value.\n4. ALWAYS communicate the final invoice value to the customer in ILS (₪). Do not print USD symbols on the invoice.\n5. ALWAYS return valid JSON without conversational wrapper text."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -64,
+        144
+      ],
+      "id": "6a4617a5-5b27-4fa0-a9be-093a53a265bd",
+      "name": "Finance_Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "return { json: { response: $input.item.json.output } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        80
+      ],
+      "id": "8aa22fd4-3c7e-4121-a234-99f6c979a488",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ",
+          "mode": "list",
+          "cachedResultName": "Customer_Master_Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Customers",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "detectAutomatically"
+            }
+          },
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "FORMATTED_STRING"
+            }
+          },
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -160,
+        272
+      ],
+      "id": "9f708b77-3633-4b7e-901c-322e7f6b0b8a",
+      "name": "customer_lookup_finance",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Cc7iKvSY1vSeLjabR6YJwU7Wsbbb3CuXD8eSU4nKLqA",
+          "mode": "list",
+          "cachedResultName": "Invoices",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Cc7iKvSY1vSeLjabR6YJwU7Wsbbb3CuXD8eSU4nKLqA/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 396056203,
+          "mode": "list",
+          "cachedResultName": "Invoices",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Cc7iKvSY1vSeLjabR6YJwU7Wsbbb3CuXD8eSU4nKLqA/edit#gid=396056203"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "invoiceId",
+              "displayName": "invoiceId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "poId",
+              "displayName": "poId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerId",
+              "displayName": "customerId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerName",
+              "displayName": "customerName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalAmountILS",
+              "displayName": "totalAmountILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "paymentTerms",
+              "displayName": "paymentTerms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "dueDate",
+              "displayName": "dueDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "agingDays",
+              "displayName": "agingDays",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "enforcedAction",
+              "displayName": "enforcedAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "createdAt",
+              "displayName": "createdAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pipeline",
+              "displayName": "pipeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStep",
+              "displayName": "currentStep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalSteps",
+              "displayName": "totalSteps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoteId",
+              "displayName": "quoteId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "expectedQuantity",
+              "displayName": "expectedQuantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "receivedQuantity",
+              "displayName": "receivedQuantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "warehouseStatus",
+              "displayName": "warehouseStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "orderType",
+              "displayName": "orderType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "results",
+              "displayName": "results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "toolCallId",
+              "displayName": "toolCallId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "response",
+              "displayName": "response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "purchaseOrderId",
+              "displayName": "purchaseOrderId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalPriceList",
+              "displayName": "totalPriceList",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "isDefense",
+              "displayName": "isDefense",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "isUrgent",
+              "displayName": "isUrgent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "deliveryDate",
+              "displayName": "deliveryDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "goodsArrived",
+              "displayName": "goodsArrived",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nextAction",
+              "displayName": "nextAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceSent",
+              "displayName": "invoiceSent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nipendoSynced",
+              "displayName": "nipendoSynced",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceILS",
+              "displayName": "customerPriceILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostILS",
+              "displayName": "supplierCostILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pold",
+              "displayName": "pold",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostUSD",
+              "displayName": "supplierCostUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceUSD",
+              "displayName": "customerPriceUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        16,
+        304
+      ],
+      "id": "1278c61f-0cdb-42a0-b283-4740c2590c6f",
+      "name": "invoice_log_writer",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=Invoice #{{ $fromAI(\"invoiceId\") }} - {{ $fromAI(\"partNumber\") }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        176,
+        320
+      ],
+      "id": "eadd1d49-3bfd-4fa7-ad7a-c7da44a317ba",
+      "name": "send_invoice_email",
+      "webhookId": "44abd1af-3de5-4257-ac06-157572d2eda6",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -384,
+        80
+      ],
+      "id": "90283dc6-1e34-425c-bcd5-3b90da954c20",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "url": "https://api.exchangeratesapi.io/latest",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "base",
+              "value": "USD"
+            },
+            {
+              "name": "symbols",
+              "value": "ILS"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        304
+      ],
+      "id": "fdb2f993-8971-4c9b-96a1-5f11d38d5ad2",
+      "name": "currency_exchange_api"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to look up the approved financial values (total amount, currency) of an official order using the purchaseOrderId",
+        "documentId": {
+          "__rl": true,
+          "value": "1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc",
+          "mode": "list",
+          "cachedResultName": "Purchase_Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1497253811,
+          "mode": "list",
+          "cachedResultName": "POs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc/edit#gid=1497253811"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        320,
+        304
+      ],
+      "id": "cc03ba0b-2bc8-466a-b78e-510f79da8f16",
+      "name": "order_value_lookup",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "63680eaa-e13b-4732-9327-bcea2e8f866a",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "SKIP",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "bf1bd717-f296-4050-8b40-8e77d5b6fd70",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "REJECTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "9cb80626-eebe-4372-8f51-503eb9a23790",
+              "leftValue": "={{ $json.quantity }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "87b4ec52-286b-4cd3-b554-fe1a300ff5a9",
+              "leftValue": "={{ $json.orderType }}",
+              "rightValue": "RFQ",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "04f6fd6a-1257-493c-9a6e-a2a566e257fa",
+              "leftValue": "={{ $json.orderType }}",
+              "rightValue": "RFI",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "7f09eb98-16d2-4d92-a10c-2a379b07caf0",
+              "leftValue": "={{ $json.partNumber }}",
+              "rightValue": "NON_EXISTENT",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "3db67326-2b7f-4ed0-aa77-ee3a66d2f712",
+              "leftValue": "={{ $json.partNumber }}",
+              "rightValue": "\" \"",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -208,
+        80
+      ],
+      "id": "13bb061e-e86d-4874-bf88-bbdd05d5820d",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: \"SKIPPED\",\n    decision: \"SKIP\",\n    nextAction: \"ADMIN_REVIEW\",\n    summary: \"Finance Agent skipped execution due to RFI/RFQ or invalid quantity/part number.\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "0dc9006f-5fd3-4e45-9b6f-c286d594f460",
+      "name": "Finance Skip Handler"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "649a1c5e-b036-474d-9e53-c7327e2bfcf3",
+              "leftValue": "={{ JSON.parse($json.response).nextAction }}",
+              "rightValue": "ADMIN_REVIEW",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        400,
+        80
+      ],
+      "id": "645c28e4-ff4b-4005-9446-335ad8603f42",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = JSON.parse($json.response);\n\nreturn {\n  json: {\n    sessionId: parsed.sessionId || \"SESS-UNKNOWN\",\n    sourceAgent: \"Finance_Agent\",\n    approvalType: \"FINANCE_APPROVAL\",\n    title: \"אישור כספים / חשבונית חריגה\",\n    summary: parsed.summary || `נדרש אישור מנהל עבור פעולת כספים/חשבונית.`,\n    approverEmail: \"ceo@company.com\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        48
+      ],
+      "id": "0dc209f1-3a5d-4007-bafe-102eb382b595",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "s40rZ2yZ6Ez7utPD",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/s40rZ2yZ6Ez7utPD",
+          "cachedResultName": "HITL_Approval_Manager"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        768,
+        48
+      ],
+      "id": "639502f1-ba0f-4273-8fe0-b1163325135f",
+      "name": "Call 'HITL_Approval_Manager'"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e0cf821a-abac-479d-a441-6ee8bbe19d7b",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "APPROVED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        48
+      ],
+      "id": "90cbb4b1-b21a-40d4-b744-545ffcffabbb",
+      "name": "If_Approval_Status"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    status: \"SUCCESS\",\n    authorizationRequired: true,\n    decision: \"FINANCE_APPROVED_BY_ADMIN\",\n    nextAction: \"CONTINUE\",\n    summary: \"פעולת הכספים/חשבונית אושרה בהצלחה על ידי המנהל ב-HITL.\",\n    sessionId: $json.sessionId || \"SESS-UNKNOWN\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        32
+      ],
+      "id": "0f891d20-0095-4fae-b363-6d1319f9cd9a",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    status: \"REJECTED\",\n    authorizationRequired: true,\n    decision: \"FINANCE_REJECTED_BY_ADMIN\",\n    nextAction: \"STOP\",\n    summary: \"פעולת הכספים/חשבונית נדחתה על ידי המנהל ב-HITL. הפעולה הופסקה.\",\n    sessionId: $json.sessionId || \"SESS-UNKNOWN\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        208
+      ],
+      "id": "8868b1e1-edea-4214-a7af-9ea5c1530766",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "let parsed = {};\n\n// בדיקה בטוחה אם השדה response קיים והוא טקסט\nif (typeof $json.response === 'string') {\n  try {\n    parsed = JSON.parse($json.response);\n  } catch (e) {\n    parsed = {};\n  }\n} else if (typeof $json.response === 'object' && $json.response !== null) {\n  parsed = $json.response;\n} else if (typeof $json === 'object' && $json !== null) {\n  parsed = $json;\n}\n\nreturn {\n  json: {\n    ...parsed,\n    status: parsed.status || \"SUCCESS\",\n    nextAction: parsed.nextAction || \"CONTINUE\",\n    authorizationRequired: false\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        240
+      ],
+      "id": "5a71a277-e3d7-4975-9489-cb8e7688a19e",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b-cloud",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -336,
+        272
+      ],
+      "id": "27fd3e71-ff88-4860-a853-fd9b27d6bf9d",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "cJuJhTz0PqFxzhEB",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Finance_Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "customer_lookup_finance": {
+      "ai_tool": [
+        [
+          {
+            "node": "Finance_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "invoice_log_writer": {
+      "ai_tool": [
+        [
+          {
+            "node": "Finance_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_invoice_email": {
+      "ai_tool": [
+        [
+          {
+            "node": "Finance_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "currency_exchange_api": {
+      "ai_tool": [
+        [
+          {
+            "node": "Finance_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "order_value_lookup": {
+      "ai_tool": [
+        [
+          {
+            "node": "Finance_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Finance Skip Handler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finance_Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finance Skip Handler": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Call 'HITL_Approval_Manager'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'HITL_Approval_Manager'": {
+      "main": [
+        [
+          {
+            "node": "If_Approval_Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Approval_Status": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Finance_Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "70wXsnmVq4KlUDHv",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "9731fa8a-8bf5-4bf9-87f4-4b4b3f2650d4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "3MC22hMIv1dvrYdR",
+  "tags": []
+}

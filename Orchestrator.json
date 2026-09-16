@@ -1,0 +1,1538 @@
+{
+  "name": "Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Orchestrator",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -192,
+        16
+      ],
+      "id": "79fd1730-e357-470b-96d6-dbf476e80374",
+      "name": "Webhook",
+      "webhookId": "fa1355ab-07e9-4370-b23c-af0827510a89"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Incoming Request Context (Complete Payload):\n{{ JSON.stringify($json) }}\n\n---\nINSTRUCTIONS:\nAnalyze the complete incoming request object provided above (including 'originalEmail', 'subject', 'text', and pre-extracted fields):\n\n1. **partNumber**: Extract the exact part number string (e.g., \"9GA1248P4G0011\").\n2. **quantity**: Extract the exact integer quantity requested.\n3. **totalPriceILS**: Extract the total monetary price specified in the order text (e.g. \"Total Price: NIS 3462103.13\" -> 3462103.13).\n4. **quoteId**: Extract Quote reference (e.g., \"Q-2026-4393\").\n5. **customerId**: Extract or map Customer ID (e.g., \"CUST-017\").\n6. **customerEmail**: Extract the sender's actual email address.\n7. **orderType & pipeline**: Determine whether this is an \"RFQ\", \"PO\", or \"RFI\", and set the correct agent pipeline array.\n\nReturn ONLY the final, strictly structured JSON object as defined in your System Prompt instructions.",
+        "options": {
+          "systemMessage": "You are the Chief Routing Orchestrator for Electro-Tech Representatives Ltd.\n\n## Your Role\nYou analyze incoming requests (Email Subject, Email Body, or Webhook prompt text provided in the input context) and determine which agents need to run. You output a `pipeline` array that lists the agents in order, and you dynamically extract the required data fields from the text.\n\n## Available Agents\n- Technical: Validates parts in catalog / NPI check (Skipped for POs)\n- Pricing: Calculates prices with markups and FX (RFQ) / Validates price match only with no email (PO)\n- CRM: Creates quotes, checks inventory (RFQ) / Compares PO prices to quote, confirms/rejects via email (PO)\n- Procurement: Creates purchase orders with suppliers (Skipped for RFQs)\n- Logistics: Manages shipping, import/export, and sets goodsArrived flag (Skipped for RFQs)\n- Finance: Creates invoices and checks credit after goods arrive (Skipped for RFQs)\n- Admin: System maintenance, database logging, and quote storage\n\n## Pipeline Determination Rules\n\n### RFI / Information Request (datasheet, specs, catalog, fan recommendations):\n[\"Technical\", \"Admin\"]\n\n### RFQ Request (standard / defense):\n[\"Technical\", \"Pricing\", \"CRM\", \"Admin\"]\n\n### PO Request (standard / defense):\n[\"Pricing\", \"CRM\", \"Procurement\", \"Logistics\", \"Finance\", \"Admin\"]\n\n### Price List Update:\n[\"Admin\"]\n\n### NPI (New Product Introduction):\n[\"Technical\", \"Admin\"]\n\n## Data Extraction Rules\nAnalyze the ENTIRE input text dynamically (subject, body, or full prompt context). Do NOT rely on pre-extracted elements or fixed dummy values:\n\n1. **partNumber**: Scan the text for explicit part numbers. Look for labels like \"Part Number:\", \"P/N:\", \"PN:\", \"Part #:\", \"SKU:\" followed by the code, OR extract any alphanumeric part number string (e.g., \"9GA1248P4G0011\", \"9GV3612G301P\", etc.). \n   - CRITICAL: Extract the EXACT part number written in the current request. NEVER hardcode, invent, or default to \"9GV\" models if a different part number is provided. If no specific part number is provided, return empty string \"\".\n\n2. **quantity**: Extract the exact quantity requested as an integer. Search thoroughly for:\n   - \"Quantity: 15000\" or \"Qty: 15000\"\n   - \"15000 units\" or \"15000 pieces\" or \"15000 pcs\"\n   - Any integer specified right before \"units\", \"pieces\", or \"pcs\".\n   - CRITICAL: If a structured quantity field exists in the incoming input JSON, ALWAYS preserve that integer. NEVER output 0 when a quantity is specified.\n\n3. **totalPriceILS**: CRITICAL REQUIREMENT FOR PO / ORDER:\n   - Scan the email body or input text for total price or amount figures (e.g., \"Total Price: NIS 3462103.13\", \"Total Price: 3462103.13\", \"NIS 40730.63\").\n   - Extract the numeric total amount as a float/number (e.g., 3462103.13 or 40730.63). Remove currency symbols or commas.\n   - If not found in PO text, default to 0.\n\n4. **quoteId**: CRITICAL REQUIREMENT:\n   - Scan text for quote references like \"Quote Q-2026-4393\", \"Quote Reference: Q-2026-110\", \"Q-2026-XXXX\".\n   - Extract the exact string (e.g., \"Q-2026-4393\").\n\n5. **customerId**: Extract or infer the customer ID based on the text:\n   - If an explicit customer ID is mentioned (e.g., \"Customer ID: CUST-017\" or \"CUST-017\"), ALWAYS use it exactly as written.\n   - Otherwise, map based on company name:\n     - \"Mellanox Technologies\" / \"Mellanox\" → \"CUST-017\"\n     - \"Most Ltd\" / \"MOST LTD\" / \"Most\" → \"CUST-001\"\n     - \"IAI\" / \"Israel Aerospace\" → \"CUST-002\"\n     - \"Rafael\" / \"Rafael Advanced\" → \"CUST-003\"\n     - \"Elbit\" / \"Elbit Systems\" → \"CUST-004\"\n     - \"Ministry of Defense\" / \"MOD\" → \"CUST-023\"\n     - \"Medtronic\" → \"CUST-006\"\n     - \"Philips\" → \"CUST-007\"\n     - \"GE Healthcare\" → \"CUST-008\"\n\n6. **customerEmail**: Extract the email address (e.g., \"procurement@mellanox-tech.co.il\") from the text or \"From\" field. If not found, construct a valid domain based on the company name.\n\n7. **application**: Determine the application type (\"defense\", \"medical\", \"industrial\", or \"standard\").\n\n8. **isDefense**: Set to `true` if the text mentions defense/military or if the customer is IAI, Rafael, Elbit, or MOD. Otherwise `false`.\n\n9. **isUrgent**: Set to `true` if the text implies urgency (ASAP, urgent, rush, emergency). Otherwise `false`.\n\n10. **orderType**: CRITICAL RULE for order type determination:\n   - **\"RFI\"** if the text asks for information, datasheets, specifications, catalogs, recommendations, or general component technical lookups with no specific order quantity/RFQ intent.\n   - **\"RFQ\"** if they ask for pricing, a quotation, unit price, lead time, or if text states \"Order Type: RFQ\", \"request for quote\", \"price request\".\n   - **\"PO\"** if the text implies a formal purchase order: \"Purchase Order\", \"PO\", \"accept the quotation\", \"issue our official purchase order\", \"Order Type: Order\".\n\n11. **customerApprovedQuote**: Set to `true` if they explicitly accept or approve a quote in the text. Otherwise `false`.\n\n12. **supplierId**: Extract supplier ID if mentioned (e.g., SUP-001 for Sanyo Denki).\n\n13. **currentInventory**: Default to 0 unless specified.\n\n14. **sessionId**: Preserve the exact incoming sessionId string starting with SESS- (e.g., \"SESS-1786204365247\"). NEVER overwrite sessionId with email subjects or text descriptions.\n\n## Output Format (STRICT JSON)\nOutput ONLY a valid JSON object matching the structure below. Replace placeholders with actual extracted values dynamically. NEVER include markdown blocks like ```json or any conversational text.\n\n{\n  \"sessionId\": \"DYNAMIC_SESSION_ID_OR_INPUT\",\n  \"pipeline\": [\"Agent1\", \"Agent2\"],\n  \"data\": {\n    \"partNumber\": \"EXTRACTED_EXACT_PART_NUMBER_OR_EMPTY\",\n    \"quantity\": EXTRACTED_QUANTITY_AS_INT,\n    \"totalPriceILS\": EXTRACTED_TOTAL_PRICE_AS_FLOAT_OR_0,\n    \"quoteId\": \"EXTRACTED_QUOTE_ID_OR_EMPTY\",\n    \"customerId\": \"EXTRACTED_OR_MAPPED_CUSTOMER_ID\",\n    \"customerEmail\": \"EXTRACTED_CUSTOMER_EMAIL\",\n    \"application\": \"EXTRACTED_APPLICATION\",\n    \"isDefense\": true_or_false,\n    \"isUrgent\": true_or_false,\n    \"orderType\": \"RFI_RFQ_OR_PO\",\n    \"customerApprovedQuote\": true_or_false,\n    \"supplierId\": \"EXTRACTED_SUPPLIER_ID_OR_EMPTY\",\n    \"currentInventory\": 0\n  },\n  \"status\": \"in_progress\"\n}\n\n## Critical Rules\n1. Output ONLY valid JSON. No conversational text, no markdown codeblocks.\n2. Dynamically switch the pipeline and orderType fields based on whether the input text is an RFI request, an RFQ request, or a PO order.\n3. For RFI / Information requests, pipeline MUST be: [\"Technical\", \"Admin\"] and orderType MUST be \"RFI\".\n4. For RFQ requests, pipeline MUST be: [\"Technical\", \"Pricing\", \"CRM\", \"Admin\"] and orderType MUST be \"RFQ\".\n5. For PO requests, pipeline MUST be: [\"Pricing\", \"CRM\", \"Procurement\", \"Logistics\", \"Finance\", \"Admin\"] and orderType MUST be \"PO\".\n6. Always extract the actual part number, quantity, customer ID, email, total price, and quote ID from the incoming text.\""
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1072,
+        192
+      ],
+      "id": "3e11b706-2ca2-414c-b8c8-2998868f87de",
+      "name": "Orchestrator"
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=🎉 תהליך אוטומציה הושלם בהצלחה! מזהה ריצה: {{ typeof $json.output === 'string' ? JSON.parse($json.output).sessionId : ($json.sessionId || JSON.parse($json.output || '{}').sessionId || 'N/A') }}",
+        "message": "=<h3>שלום, מערכת האוטומציה המרכזית סיימה את הטיפול בבקשה בהצלחה!</h3>  <p>כל תתי-הסוכנים השלימו את משימותיהם והמידע מעודכן במערכות החברה.</p>  <hr />  <p><strong>📋 פרטי הריצה הסופיים:</strong></p> <ul>   <li><strong>מזהה ריצה (Session ID):</strong> {{ typeof $json.output === 'string' ? JSON.parse($json.output).sessionId : ($json.sessionId || JSON.parse($json.output || '{}').sessionId || 'N/A') }}</li>   <li><strong>מק\"ט מטופל:</strong> {{ typeof $json.output === 'string' ? (JSON.parse($json.output).data?.partNumber || JSON.parse($json.output).partNumber) : ($json.partNumber || JSON.parse($json.output || '{}').data?.partNumber || 'N/A') }}</li>   <li><strong>לקוח:</strong> {{ typeof $json.output === 'string' ? (JSON.parse($json.output).data?.customerId || JSON.parse($json.output).customerId) : ($json.customerId || JSON.parse($json.output || '{}').data?.customerId || 'N/A') }}</li>   <li><strong>כמות:</strong> {{ typeof $json.output === 'string' ? (JSON.parse($json.output).data?.quantity || JSON.parse($json.output).quantity) : ($json.quantity || JSON.parse($json.output || '{}').data?.quantity || 'N/A') }}</li>   <li><strong>סטטוס סופי:</strong> <span style=\"color: green; font-weight: bold;\">{{ typeof $json.output === 'string' ? JSON.parse($json.output).status : ($json.status || JSON.parse($json.output || '{}').status || 'complete') }}</span></li> </ul>  <hr /> <p style=\"font-size: 11px; color: #777;\">הודעה זו נשלחה באופן אוטומטי על ידי מנוע הסוכנים המרכזי ב-n8n.</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        4336,
+        656
+      ],
+      "id": "06da7eab-d77d-42ea-bbaa-58f236fe88d0",
+      "name": "Send a message",
+      "webhookId": "ecdff274-4610-4ead-bf48-d6780ffaabab",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code in JavaScript2 - Bulletproof Price & Payload Preservation\n\n// 1. קבלת הקלט מהאורקסטרטור\nconst item = $input.item.json;\n\n// 2. פענוח בטוח של הפלט\nlet parsedData = {};\nif (typeof item === 'string') {\n    try {\n        parsedData = JSON.parse(item);\n    } catch (e) {\n        parsedData = { output: item };\n    }\n} else if (item.response && typeof item.response === 'string') {\n    try {\n        parsedData = JSON.parse(item.response);\n    } catch (e) {\n        parsedData = item;\n    }\n} else if (item.output && typeof item.output === 'string') {\n    try {\n        parsedData = JSON.parse(item.output);\n    } catch (e) {\n        parsedData = item;\n    }\n} else {\n    parsedData = item;\n}\n\n// 3. חילוץ מערך הצינור (Pipeline)\nlet pipeline = parsedData.pipeline || item.pipeline || [];\nif (typeof pipeline === 'string') {\n    try {\n        pipeline = JSON.parse(pipeline);\n    } catch (e) {\n        pipeline = [];\n    }\n}\n\n// 4. חילוץ אובייקט ה-Data וה-Session\nlet data = parsedData.data || item.data || {};\nif (typeof data === 'string') {\n    try {\n        data = JSON.parse(data);\n    } catch (e) {\n        data = {};\n    }\n}\n\nconst sessionId = item.sessionId || parsedData.sessionId || data.sessionId || `SESS-${Date.now()}`;\n\n// בדיקת דילוג פנימית עבור תת-הוורקפלו של הסוכן\nlet skipped = \"\";\nif (!pipeline.includes(\"Technical\") && !pipeline.includes(\"Technical_Agent\")) {\n    skipped = \"Technical\";\n}\n\n// 5. גילוי מק\"ט וכמות\nlet partNumber = parsedData.partNumber || data.partNumber || item.partNumber || \"\";\nif (!partNumber || partNumber === \"Electro-Tech\" || partNumber === \"UNKNOWN\") {\n    try {\n        const prevNode = $(\"Guardrail_Filter1\").item.json;\n        if (prevNode && prevNode.partNumber) partNumber = prevNode.partNumber;\n    } catch (err) {\n        partNumber = \"\";\n    }\n}\n\nlet quantity = 0;\nif (parsedData.quantity !== undefined && parseInt(parsedData.quantity) > 0) {\n    quantity = parseInt(parsedData.quantity);\n} else if (data.quantity !== undefined && parseInt(data.quantity) > 0) {\n    quantity = parseInt(data.quantity);\n} else if (item.quantity !== undefined && parseInt(item.quantity) > 0) {\n    quantity = parseInt(item.quantity);\n}\n\nif (quantity === 0) { \n    try {\n        const prevNode = $(\"Guardrail_Filter1\").item.json;\n        if (prevNode && prevNode.quantity) quantity = parseInt(prevNode.quantity);\n    } catch (err) {\n        quantity = 0;\n    }\n}\n\n// ==============================================\n// 6. חילוץ וסריקת חירום של סכום הכסף (totalPriceILS) ו-Quote ID\n// ==============================================\nlet totalPriceILS = Number(data.totalPriceILS || data.totalPriceList || parsedData.totalPriceILS || item.totalPriceILS || 0);\nlet quoteId = data.quoteId || parsedData.quoteId || item.quoteId || \"\";\n\n// סריקת טקסט חירום במידה והמחיר או ה-Quote ID חסרים\nlet rawEmail = \"\";\ntry {\n    rawEmail = $('Code in JavaScript1').first()?.json?.originalEmail || \n               $('Code in JavaScript1').first()?.json?.emailContent || \n               $('Guardrail_Filter1').first()?.json?.text || \"\";\n} catch (e) {\n    rawEmail = \"\";\n}\n\nif (!totalPriceILS && rawEmail) {\n    const priceMatch = rawEmail.match(/(?:Total Price|Total|NIS|ILS|₪)\\s*:?\\s*(?:NIS|ILS|₪)?\\s*([\\d,.]+)/i);\n    if (priceMatch) {\n        totalPriceILS = parseFloat(priceMatch[1].replace(/,/g, ''));\n    }\n}\n\nif (!quoteId && rawEmail) {\n    const quoteMatch = rawEmail.match(/Q-2026-\\d+/i);\n    if (quoteMatch) {\n        quoteId = quoteMatch[0];\n    }\n}\n\n// 7. בניית ה-State המשוטח המלא\nconst customerId = parsedData.customerId || data.customerId || item.customerId || \"\";\nconst customerEmail = parsedData.customerEmail || data.customerEmail || item.customerEmail || \"\";\nconst orderType = parsedData.orderType || data.orderType || item.orderType || (rawEmail.match(/datasheet|catalog|specs|RFI|information/i) ? \"RFI\" : \"RFQ\");\n\nconst state = {\n    sessionId: sessionId,\n    pipeline: pipeline,\n    currentStep: 1,\n    totalSteps: pipeline.length || (orderType === \"RFI\" ? 2 : 4),\n    status: \"in_progress\",\n    skipped: skipped,\n    \n    partNumber: partNumber,\n    quantity: quantity,\n    customerId: customerId,\n    customerEmail: customerEmail,\n    orderType: orderType,\n    isDefense: !!(parsedData.isDefense || data.isDefense || item.isDefense),\n    isUrgent: !!(parsedData.isUrgent || data.isUrgent || item.isUrgent),\n    \n    // הזרקה מפורשת של שדות המחיר וההצעה\n    totalPriceILS: totalPriceILS,\n    totalPriceList: totalPriceILS,\n    customerPriceILS: totalPriceILS,\n    quoteId: quoteId,\n    \n    data: {\n        sessionId: sessionId,\n        partNumber: partNumber,\n        quantity: quantity,\n        customerId: customerId,\n        customerEmail: customerEmail,\n        totalPriceILS: totalPriceILS,\n        totalPriceList: totalPriceILS,\n        customerPriceILS: totalPriceILS,\n        quoteId: quoteId\n    },\n    results: parsedData.results || item.results || {}\n};\n\nconsole.log(\"=== CODE 2 FINAL OUTPUT WITH PRICING & QUOTE ===\");\nconsole.log(JSON.stringify(state, null, 2));\n\nreturn [{ json: state }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        192
+      ],
+      "id": "b8f6361c-3731-42ee-93ee-109b89c9a1ff",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==============================================\n// 0. חילוץ היסטורי בטוח מנודים קודמים ב-n8n (מניעת איבוד מידע)\n// ==============================================\nlet historicalData = {\n    pipeline: [],\n    sessionId: \"\",\n    partNumber: \"\",\n    quantity: 0,\n    currentStep: 1,\n    totalSteps: 4,\n    orderType: \"RFQ\",\n    customerId: \"\",\n    customerEmail: \"\",\n    partName: \"DC Axial Fan\",\n    manufacturer: \"Sanyo Denki\",\n    category: \"Cooling Fans\",\n    results: {}\n};\n\n// ניסיון משיכת נתונים בטוחה מ-Code2 (או מהאורקסטרטור כגיבוי)\ntry {\n    const prev = $(\"Code in JavaScript2\").item.json;\n    if (prev) {\n        if (prev.pipeline) historicalData.pipeline = prev.pipeline;\n        if (prev.sessionId) historicalData.sessionId = prev.sessionId;\n        if (prev.partNumber) historicalData.partNumber = prev.partNumber;\n        if (prev.quantity) historicalData.quantity = prev.quantity;\n        if (prev.currentStep !== undefined) historicalData.currentStep = prev.currentStep;\n        if (prev.totalSteps) historicalData.totalSteps = prev.totalSteps;\n        if (prev.orderType) historicalData.orderType = prev.orderType;\n        if (prev.customerId) historicalData.customerId = prev.customerId;\n        if (prev.customerEmail) historicalData.customerEmail = prev.customerEmail;\n        if (prev.partName) historicalData.partName = prev.partName;\n        if (prev.manufacturer) historicalData.manufacturer = prev.manufacturer;\n        if (prev.category) historicalData.category = prev.category;\n        if (prev.results) historicalData.results = prev.results;\n    }\n} catch (e) {\n    try {\n        const orch = $(\"Orchestrator\").item.json;\n        if (orch) {\n            if (orch.pipeline) historicalData.pipeline = orch.pipeline;\n            if (orch.sessionId) historicalData.sessionId = orch.sessionId;\n            if (orch.partNumber) historicalData.partNumber = orch.partNumber;\n            if (orch.quantity) historicalData.quantity = orch.quantity;\n            if (orch.orderType) historicalData.orderType = orch.orderType;\n            if (orch.customerId) historicalData.customerId = orch.customerId;\n            if (orch.customerEmail) historicalData.customerEmail = orch.customerEmail;\n        }\n    } catch (err) {\n        console.log(\"Could not fetch historical data from prior nodes\");\n    }\n}\n\n// ==============================================\n// 0.5. חילוץ בטוח של חוקי העסק (business_rules) עבור סוכן התמחור\n// ==============================================\nlet businessRules = {};\ntry {\n    const initNode = $(\"Init_Session\").item.json;\n    if (initNode && initNode.business_rules) {\n        businessRules = initNode.business_rules;\n    } else if (initNode && initNode.session_payload) {\n        const parsedPayload = typeof initNode.session_payload === 'string' ? JSON.parse(initNode.session_payload) : initNode.session_payload;\n        if (parsedPayload.business_rules) businessRules = parsedPayload.business_rules;\n    }\n} catch (e) {}\n\nif (!businessRules || Object.keys(businessRules).length === 0) {\n    try {\n        const bizNode = $(\"Get_Business_Rules\").item.json;\n        if (bizNode) {\n            businessRules = bizNode.business_rules || bizNode;\n        }\n    } catch (e) {\n        try {\n            const bizNode1 = $(\"Get_Business_Rules1\").item.json;\n            if (bizNode1) {\n                businessRules = bizNode1.business_rules || bizNode1;\n            }\n        } catch (err) {\n            console.log(\"Could not fetch business_rules from prior nodes\");\n        }\n    }\n}\n\n// ==============================================\n// 1. קבלת הנתונים ופירסוס תגובת הסוכן הטכני (לפני בדיקת דילוג)\n// ==============================================\nconst inputData = $json;\nlet technicalResponse = {};\nlet rawResponseText = inputData.response || \"\";\n\ntry {\n    if (inputData.response) {\n        if (typeof inputData.response === 'string') {\n            technicalResponse = JSON.parse(inputData.response);\n        } else if (typeof inputData.response === 'object') {\n            technicalResponse = inputData.response;\n        }\n    }\n} catch (e) {\n    console.log(\"Error parsing technical response in Code 3\");\n}\n\n// ==============================================\n// 1.5. מנגנון זיהוי כשל והתאוששות (ERROR / RECOVERY BYPASS)\n// ==============================================\nconst currentStatus = String(technicalResponse.status || inputData.status || \"\").toUpperCase();\nconst currentNextAction = String(technicalResponse.nextAction || inputData.nextAction || \"\").toUpperCase();\n\nconst upstreamFailed = currentStatus === \"ERROR\" || \n                       currentStatus === \"REJECTED\" || \n                       currentStatus === \"FAILED\" || \n                       currentNextAction === \"ADMIN_REVIEW\";\n\nif (upstreamFailed) {\n    console.log(\"Upstream agent flagged an error/rejection. Initiating workflow bypass to Admin.\");\n    \n    const safeSessionId = technicalResponse.sessionId || inputData.sessionId || historicalData.sessionId || `SESS-${Date.now()}`;\n    \n    return [{\n        json: {\n            ...historicalData,\n            ...inputData,\n            ...technicalResponse,\n            business_rules: businessRules,\n            sessionId: safeSessionId,\n            decision: \"SKIP\",\n            nextAction: \"ADMIN_REVIEW\",\n            status: \"BYPASSED_DUE_TO_ERROR\",\n            summary: technicalResponse.technicalSummary || inputData.summary || \"Pipeline bypassed due to prior agent error or rejection.\",\n            results: {\n                ...(historicalData.results || {}),\n                Technical: {\n                    status: currentStatus || \"REJECTED\",\n                    summary: technicalResponse.technicalSummary || rawResponseText || \"Technical verification failed or rejected.\"\n                }\n            }\n        }\n    }];\n}\n\n// ==============================================\n// 2. מנגנון הדילוג הרשמי (RFI / Pricing SKIP)\n// ==============================================\nconst pipeline = ($json.pipeline && $json.pipeline.length > 0) ? $json.pipeline : (technicalResponse.pipeline || historicalData.pipeline || []);\nconst orderType = String(technicalResponse.orderType || $json.orderType || historicalData.orderType || \"\").toUpperCase();\nconst status = String(technicalResponse.status || \"\").toUpperCase();\n\nconst isRFI = [\"RFI\", \"INFORMATION\", \"REQUEST FOR INFORMATION\", \"DATASHEET\", \"CATALOG\", \"SPECS\", \"INFO_PROVIDED\", \"SELECTION_REQUIRED\"].includes(orderType) || [\"INFO_PROVIDED\", \"SELECTION_REQUIRED\"].includes(status);\nconst hasPricing = pipeline.includes(\"Pricing\") || pipeline.includes(\"Pricing_Agent\");\n\nif (isRFI || (pipeline.length > 0 && !hasPricing)) {\n    console.log(\"SKIP Code 3 (Pricing): Request is RFI/Info or Pricing not in pipeline - Passing data through unchanged\");\n    return [{ json: { ...$json, ...technicalResponse, business_rules: businessRules, orderType: isRFI ? \"RFI\" : orderType } }]; \n}\n\n// ==============================================\n// 3. חילוץ מק\"ט (ללא הזרקת מק\"ט פיקטיבי)\n// ==============================================\nlet partNumber = technicalResponse.partNumber || inputData.partNumber || historicalData.partNumber || \"\";\nif (!partNumber || partNumber === \"\") {\n    const match = rawResponseText.match(/PN:\\s*([A-Za-z0-9\\-]+)/i);\n    if (match) {\n        partNumber = match[1];\n    }\n}\nif (!partNumber && inputData.data && inputData.data.partNumber) {\n    partNumber = inputData.data.partNumber;\n}\nif (!partNumber) {\n    partNumber = \"\";\n}\n\n// ==============================================\n// 4. חילוץ כמות (ללא הזרקת כמות פיקטיבית)\n// ==============================================\nlet quantity = 0;\nif (technicalResponse.quantity && technicalResponse.quantity > 0) {\n    quantity = parseInt(technicalResponse.quantity);\n} else if (inputData.quantity && inputData.quantity > 0) {\n    quantity = parseInt(inputData.quantity);\n} else if (inputData.data && inputData.data.quantity && inputData.data.quantity > 0) {\n    quantity = parseInt(inputData.data.quantity);\n} else if (inputData.item && inputData.item.quantity) {\n    quantity = parseInt(inputData.item.quantity);\n} else if (historicalData.quantity && historicalData.quantity > 0) {\n    quantity = historicalData.quantity;\n}\n\n// ==============================================\n// 5. בניית המצב המשוטח עבור סוכן התמחור\n// ==============================================\nconst safeSessionId = technicalResponse.sessionId || inputData.sessionId || historicalData.sessionId || `SESS-${Date.now()}`;\n\nconst updatedState = {\n    sessionId: safeSessionId,\n    pipeline: pipeline,\n    currentStep: (historicalData.currentStep !== undefined) ? Number(historicalData.currentStep) + 1 : 2,\n    totalSteps: historicalData.totalSteps || inputData.totalSteps || 4,\n    status: \"in_progress\",\n    \n    // הזרקת חוקי העסק המפורשים לסוכן התמחור\n    business_rules: businessRules,\n\n    partNumber: partNumber,\n    quantity: quantity, \n    partName: technicalResponse.partName || (inputData.data && inputData.data.partName) || historicalData.partName || \"DC Axial Fan\",\n    manufacturer: technicalResponse.manufacturer || (inputData.data && inputData.data.manufacturer) || historicalData.manufacturer || \"Sanyo Denki\",\n    category: technicalResponse.category || (inputData.data && inputData.data.category) || historicalData.category || \"Cooling Fans\",\n    orderType: technicalResponse.orderType || inputData.orderType || historicalData.orderType || \"RFQ\",\n    customerId: inputData.customerId || (inputData.data && inputData.data.customerId) || historicalData.customerId || \"\",\n    customerEmail: inputData.customerEmail || (inputData.data && inputData.data.customerEmail) || historicalData.customerEmail || \"\",\n\n    data: {\n        sessionId: safeSessionId,\n        business_rules: businessRules,\n        partNumber: partNumber,\n        quantity: quantity,\n        customerId: inputData.customerId || (inputData.data && inputData.data.customerId) || historicalData.customerId || \"\",\n        customerEmail: inputData.customerEmail || (inputData.data && inputData.data.customerEmail) || historicalData.customerEmail || \"\"\n    },\n    results: inputData.results || historicalData.results || {}\n};\n\nif (!updatedState.results) { updatedState.results = {}; }\nupdatedState.results.Technical = {\n    status: technicalResponse.status || \"APPROVED\",\n    summary: technicalResponse.technicalSummary || rawResponseText || \"Technical verification processed.\"\n};\n\nconsole.log(\"========== CODE 3 FINAL OUTPUT ==========\");\nconsole.log(JSON.stringify(updatedState, null, 2));\n\nreturn [{\n    json: updatedState\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        128
+      ],
+      "id": "b07492b2-5dbe-4034-897a-dede84a6c89d",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==============================================\n// Code in JavaScript4 - Strict RFQ/PO OrderType Preservation\n// ==============================================\nconst nodeInput = $json || {};\n\n// 1. שליפת אובייקט הליבה והיסטוריה מנודים קודמים (מניעת איבוד מידע)\nlet root = {};\ntry {\n  root = $('Code in JavaScript2').first()?.json || $('Orchestrator').first()?.json || {};\n} catch (e) {\n  root = {};\n}\n\nlet prevCode3 = {};\ntry {\n  prevCode3 = $('Code in JavaScript3').first()?.json || {};\n} catch (e) {\n  prevCode3 = {};\n}\n\n// 2. חילוץ sessionId מקורי בלבד (ללא מחרוזות קשיחות)\nfunction getValidSessionId(...candidates) {\n  for (const cand of candidates) {\n    if (cand && typeof cand === 'string' && cand !== 'SESS-UNKNOWN' && cand.trim() !== '') {\n      return cand;\n    }\n  }\n  return `SESS-${Date.now()}`;\n}\n\nconst sessionId = getValidSessionId(\n  nodeInput.sessionId,\n  prevCode3.sessionId,\n  prevCode3.data?.sessionId,\n  root.sessionId,\n  root.data?.sessionId\n);\n\n// 3. חילוץ הרמטי ודינמי של orderType (מניעת הפיכת RFQ ל-PO)\nconst rawOrderType = nodeInput.orderType || \n                     prevCode3.orderType || \n                     root.orderType || \n                     (root.data && root.data.orderType) || \n                     \"RFQ\";\nconst orderType = String(rawOrderType).toUpperCase();\n\n// 4. חילוץ שדות הליבה\nconst partNumber = nodeInput.partNumber || prevCode3.partNumber || root.partNumber || (root.data && root.data.partNumber) || \"\";\nconst quantity = Number(nodeInput.quantity || prevCode3.quantity || root.quantity || (root.data && root.data.quantity) || 0);\n\n// 5. חילוץ סכום התמחור שחושב על ידי Pricing Agent\nconst totalPriceILS = Number(nodeInput.totalPriceILS || nodeInput.totalPriceList || prevCode3.totalPriceILS || root.totalPriceILS || (root.data && root.data.totalPriceILS) || 0);\nconst quoteId = nodeInput.quoteId || prevCode3.quoteId || root.quoteId || (root.data && root.data.quoteId) || (orderType === \"RFQ\" ? `Q-2026-${$execution.id}` : \"\");\n\n// 6. העברת ה-State עם orderType דינמי ומדויק לסוכן CRM\nreturn [{\n  json: {\n    ...root,\n    ...prevCode3,\n    ...nodeInput,\n    sessionId: sessionId,\n    partNumber: partNumber,\n    quantity: quantity,\n    totalPriceILS: totalPriceILS,\n    totalPriceList: totalPriceILS,\n    customerPriceILS: totalPriceILS,\n    quoteId: quoteId,\n    orderType: orderType, // שימור דינמי מוחלט: RFQ נשאר RFQ, PO נשאר PO\n    data: {\n      ...(root.data || {}),\n      ...(prevCode3.data || {}),\n      ...(nodeInput.data || {}),\n      sessionId: sessionId,\n      partNumber: partNumber,\n      quantity: quantity,\n      totalPriceILS: totalPriceILS,\n      totalPriceList: totalPriceILS,\n      customerPriceILS: totalPriceILS,\n      quoteId: quoteId,\n      orderType: orderType\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        128
+      ],
+      "id": "c90e6473-f3cd-4361-ad70-66d3541726df",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $json || {};\n\n// 1. שליפת נתוני שורש וסוכן CRM\nlet rootData = {};\ntry {\n  rootData = $('Code in JavaScript2').first()?.json || $('Orchestrator').first()?.json || {};\n} catch(e) {\n  rootData = {};\n}\n\nlet crmResponse = {};\ntry {\n  if (inputData.response) {\n    crmResponse = typeof inputData.response === 'string' ? JSON.parse(inputData.response) : inputData.response;\n  }\n} catch (e) {\n  crmResponse = {};\n}\n\nfunction getValidSessionId(...candidates) {\n  for (const cand of candidates) {\n    if (cand && typeof cand === 'string' && cand !== 'SESS-UNKNOWN' && cand.trim() !== '') {\n      return cand;\n    }\n  }\n  return `SESS-${Date.now()}`;\n}\n\nconst sessionId = getValidSessionId(\n  inputData.sessionId,\n  crmResponse.sessionId,\n  rootData.sessionId,\n  rootData.data?.sessionId\n);\n\n// 2. חילוץ דינמי של orderType (ללא מקבולי hardcoded)\nconst rawOrderType = inputData.orderType || \n                     crmResponse.orderType || \n                     rootData.orderType || \n                     (rootData.data && rootData.data.orderType) || \n                     \"RFQ\";\nconst orderType = String(rawOrderType).toUpperCase();\n\nconst partNumber = inputData.partNumber || crmResponse.partNumber || rootData.partNumber || (rootData.data && rootData.data.partNumber) || \"\";\nconst quantity = Number(inputData.quantity || crmResponse.quantity || rootData.quantity || (rootData.data && rootData.data.quantity) || 0);\nconst customerId = inputData.customerId || crmResponse.customerId || rootData.customerId || \"\";\nconst customerEmail = inputData.customerEmail || crmResponse.customerEmail || rootData.customerEmail || \"\";\nconst quoteId = inputData.quoteId || crmResponse.quoteId || rootData.quoteId || (rootData.data && rootData.data.quoteId) || \"\";\n\nconst customerPriceILS = Number(\n  inputData.totalPriceILS || \n  inputData.customerPriceILS || \n  crmResponse.quoteAmountILS || \n  crmResponse.totalPriceILS || \n  rootData.totalPriceILS || \n  (rootData.data && rootData.data.totalPriceILS) || \n  0\n);\n\n// 3. בדיקת דילוג עבור RFQ / RFI\nconst pipeline = inputData.pipeline || rootData.pipeline || [];\nconst hasProcurement = pipeline.includes(\"Procurement\") || pipeline.includes(\"Procurement_Agent\");\nconst isRFQorRFI = [\"RFQ\", \"RFI\", \"INFORMATION\", \"DATASHEET\"].includes(orderType);\n\nif (isRFQorRFI || !hasProcurement) {\n  return [{\n    json: {\n      ...rootData,\n      ...inputData,\n      sessionId: sessionId,\n      partNumber: partNumber,\n      quantity: quantity,\n      customerId: customerId,\n      customerEmail: customerEmail,\n      totalPriceILS: customerPriceILS,\n      customerPriceILS: customerPriceILS,\n      quoteId: quoteId,\n      orderType: orderType, // שומר על הערך המקורי (RFQ)\n      decision: \"SKIP\",\n      nextAction: \"ADMIN\",\n      summary: `RFQ Stage Completed: Quote ${quoteId} issued by CRM. Procurement skipped.`,\n      data: {\n        ...(rootData.data || {}),\n        ...(inputData.data || {}),\n        sessionId: sessionId,\n        partNumber: partNumber,\n        quantity: quantity,\n        customerId: customerId,\n        customerEmail: customerEmail,\n        totalPriceILS: customerPriceILS,\n        quoteId: quoteId,\n        orderType: orderType\n      }\n    }\n  }];\n}\n\n// 4. נתיב PO בלבד\nconst totalCostUSD = customerPriceILS > 0 ? Number((customerPriceILS / 3.75 / 1.3).toFixed(2)) : 0;\nconst unitCostUSD = (quantity > 0 && totalCostUSD > 0) ? Number((totalCostUSD / quantity).toFixed(4)) : 0;\nconst purchaseOrderId = inputData.purchaseOrderId || inputData.poId || (quoteId ? quoteId.replace(/^Q-/, \"PO-\") : `PO-2026-${$execution.id}`);\n\nreturn [{\n  json: {\n    ...rootData,\n    ...inputData,\n    sessionId: sessionId,\n    partNumber: partNumber,\n    quantity: quantity,\n    customerId: customerId,\n    customerEmail: customerEmail,\n    totalPriceILS: customerPriceILS,\n    customerPriceILS: customerPriceILS,\n    unitCostUSD: unitCostUSD,\n    totalCostUSD: totalCostUSD,\n    purchaseOrderId: purchaseOrderId,\n    poId: purchaseOrderId,\n    quoteId: quoteId,\n    orderType: \"PO\",\n    data: {\n      ...(rootData.data || {}),\n      ...(inputData.data || {}),\n      sessionId: sessionId,\n      partNumber: partNumber,\n      quantity: quantity,\n      customerId: customerId,\n      customerEmail: customerEmail,\n      totalPriceILS: customerPriceILS,\n      customerPriceILS: customerPriceILS,\n      unitCostUSD: unitCostUSD,\n      totalCostUSD: totalCostUSD,\n      purchaseOrderId: purchaseOrderId,\n      poId: purchaseOrderId,\n      quoteId: quoteId,\n      orderType: \"PO\"\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3456,
+        64
+      ],
+      "id": "745b1add-7791-43fa-a3ae-166426ebda70",
+      "name": "Code in JavaScript5"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==============================================\n// Code in JavaScript6 - Dynamic Session & Full State Pass\n// ==============================================\n\nconst inputData = $json || {};\n\n// 1. שחזור בטוח מ-Orchestrator ומ-Code 5\nlet base = {};\ntry {\n  const rawBase = $('Orchestrator').first()?.json?.output || $('Orchestrator').first()?.json || {};\n  if (typeof rawBase === 'string') {\n    base = JSON.parse(rawBase);\n  } else if (typeof rawBase === 'object' && rawBase !== null) {\n    base = rawBase;\n  }\n} catch (e) {\n  base = {};\n}\n\nlet prevCode5 = {};\ntry {\n  prevCode5 = $('Code in JavaScript5').first()?.json || {};\n} catch (e) {\n  prevCode5 = {};\n}\n\n// 2. פענוח פלט סוכן הרכש\nlet procResp = {};\nif (typeof inputData.response === 'string') {\n  try {\n    procResp = JSON.parse(inputData.response);\n  } catch (e) {\n    procResp = {};\n  }\n} else if (typeof inputData.response === 'object' && inputData.response !== null) {\n  procResp = inputData.response;\n} else {\n  procResp = inputData;\n}\n\n// 3. מסנן זיהוי מזהה סשן נקי - מניעת SESS-UNKNOWN ומחרוזות קשיחות\nfunction getValidSessionId(...candidates) {\n  for (const cand of candidates) {\n    if (cand && typeof cand === 'string' && cand !== 'SESS-UNKNOWN' && cand.trim() !== '') {\n      return cand;\n    }\n  }\n  return `SESS-${Date.now()}`;\n}\n\nconst sessionId = getValidSessionId(\n  prevCode5.sessionId,\n  prevCode5.data?.sessionId,\n  base.sessionId,\n  base.data?.sessionId,\n  inputData.sessionId,\n  procResp.sessionId\n);\n\nconst partNumber = prevCode5.partNumber || procResp.partNumber || inputData.partNumber || base.partNumber || (base.data && base.data.partNumber) || \"\";\nconst quantity = Number(prevCode5.quantity || procResp.orderQuantity || procResp.quantity || inputData.quantity || base.quantity || (base.data && base.data.quantity) || 0);\n\nconst totalPriceILS = Number(prevCode5.totalPriceILS || inputData.totalPriceILS || (prevCode5.data && prevCode5.data.totalPriceILS) || 0);\nconst unitCostUSD = Number(prevCode5.unitCostUSD || procResp.unitCostUSD || inputData.unitCostUSD || 0);\nconst totalCostUSD = Number(prevCode5.totalCostUSD || procResp.totalCostUSD || inputData.totalCostUSD || 0);\n\nconst quoteId = prevCode5.quoteId || inputData.quoteId || (prevCode5.data && prevCode5.data.quoteId) || \"\";\n\nlet poId = prevCode5.purchaseOrderId || prevCode5.poId || procResp.poId || procResp.purchaseOrderId || inputData.purchaseOrderId || base.purchaseOrderId || \"\";\nif (!poId || poId === \"PO-2026-ACTIVE\") {\n  poId = quoteId ? quoteId.replace(/^Q-/, \"PO-\") : \"PO-2026-ACTIVE\";\n}\n\nconst orderType = String(prevCode5.orderType || inputData.orderType || base.orderType || \"PO\").toUpperCase();\nconst status = String(procResp.status || inputData.status || \"SUCCESS\").toUpperCase();\nconst nextAction = String(procResp.nextAction || inputData.nextAction || \"LOGISTICS\").toUpperCase();\n\n// 4. טיפול בשגיאות / RFQ / RFI Bypass\nif (status === \"ERROR\" || status === \"REJECTED\" || nextAction === \"ADMIN_REVIEW\") {\n  return [{\n    json: {\n      ...base,\n      ...prevCode5,\n      sessionId: sessionId,\n      partNumber: partNumber,\n      quantity: quantity,\n      totalPriceILS: totalPriceILS,\n      customerPriceILS: totalPriceILS,\n      unitCostUSD: unitCostUSD,\n      totalCostUSD: totalCostUSD,\n      status: \"BYPASSED_DUE_TO_ERROR\",\n      decision: \"SKIP\",\n      nextAction: \"ADMIN_REVIEW\",\n      summary: procResp.summary || \"Bypassed due to procurement error or rejection.\"\n    }\n  }];\n}\n\nif (orderType === \"RFQ\" || orderType === \"RFI\" || procResp.decision === \"SKIP\") {\n  return [{\n    json: {\n      ...base,\n      ...prevCode5,\n      sessionId: sessionId,\n      partNumber: partNumber,\n      quantity: quantity,\n      totalPriceILS: totalPriceILS,\n      unitCostUSD: unitCostUSD,\n      totalCostUSD: totalCostUSD,\n      orderType: orderType,\n      decision: \"SKIP\",\n      nextAction: \"NONE\",\n      summary: \"RFQ/RFI Stage: Logistics skipped.\"\n    }\n  }];\n}\n\n// 5. פלט מלא ועשיר עבור סוכן הלוגיסטיקה\nreturn [{\n  json: {\n    ...base,\n    ...prevCode5,\n    ...inputData,\n    sessionId: sessionId,\n    partNumber: partNumber,\n    quantity: quantity,\n    totalPriceILS: totalPriceILS,\n    customerPriceILS: totalPriceILS,\n    unitCostUSD: unitCostUSD,\n    totalCostUSD: totalCostUSD,\n    orderType: \"Order\",\n    decision: \"ORDER_NOW\",\n    nextAction: \"LOGISTICS\",\n    purchaseOrderId: poId,\n    poId: poId,\n    pold: poId,\n    quoteId: quoteId,\n    data: {\n      ...(prevCode5.data || {}),\n      sessionId: sessionId,\n      partNumber: partNumber,\n      quantity: quantity,\n      totalPriceILS: totalPriceILS,\n      customerPriceILS: totalPriceILS,\n      unitCostUSD: unitCostUSD,\n      totalCostUSD: totalCostUSD,\n      purchaseOrderId: poId,\n      poId: poId,\n      quoteId: quoteId\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        656
+      ],
+      "id": "c22972ed-ca4a-4512-9f00-a7beb64ad95d",
+      "name": "Code in JavaScript6"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $json;\nconst pipeline = inputData.pipeline || [];\n\n// ==============================================\n// 1. חילוץ חסין של תגובת הלוגיסטיקה מהצעד הקודם עם סורק חירום\n// ==============================================\nlet logisticsResponse = {};\ntry {\n    if (inputData.response && typeof inputData.response === 'string') {\n        let cleanedResponse = inputData.response.trim();\n        if (cleanedResponse.startsWith(\"```\")) {\n            cleanedResponse = cleanedResponse.replace(/^```(?:json)?\\n?/, \"\").replace(/\\n?```$/, \"\").trim();\n        }\n        try {\n            logisticsResponse = JSON.parse(cleanedResponse);\n        } catch (innerError) {\n            console.log(\"Standard JSON parse failed in Node 7, activating regex fallback.\");\n            \n            const sessionMatch = cleanedResponse.match(/\"sessionId\"\\s*:\\s*\"([^\"]+)\"/i);\n            if (sessionMatch) logisticsResponse.sessionId = sessionMatch[1];\n\n            const partMatch = cleanedResponse.match(/\"partNumber\"\\s*:\\s*\"([^\"]+)\"/i);\n            if (partMatch) logisticsResponse.partNumber = partMatch[1];\n\n            const qtyMatch = cleanedResponse.match(/\"expectedQuantity\"\\s*:\\s*(\\d+)/i) || cleanedResponse.match(/\"quantity\"\\s*:\\s*(\\d+)/i);\n            if (qtyMatch) logisticsResponse.expectedQuantity = Number(qtyMatch[1]);\n\n            const quoteMatch = cleanedResponse.match(/\"quoteId\"\\s*:\\s*\"([^\"]+)\"/i);\n            if (quoteMatch) logisticsResponse.quoteId = quoteMatch[1];\n        }\n    } else if (inputData.response && typeof inputData.response === 'object') {\n        logisticsResponse = inputData.response;\n    }\n} catch (e) {\n    console.log(\"Error parsing logistics response\");\n}\n\n// ==============================================\n// 2. 🛡️ רדאר היסטורי משולב: מניעת איבודי מידע ואיפוס מחירי אמת\n// ==============================================\nlet node6Data = {}; // Procurement\nlet node4Data = {}; // CRM\nlet node3Data = {}; // Pricing\n\ntry { const checkNode6 = $('Code in JavaScript6').first().json; if (checkNode6) node6Data = checkNode6; } catch (e) { console.log(\"Bypassed Node 6 lookup\"); }\ntry { const checkNode4 = $('Code in JavaScript4').first().json; if (checkNode4) node4Data = checkNode4; } catch (e) { console.log(\"Bypassed Node 4 lookup\"); }\ntry { const checkNode3 = $('Code in JavaScript3').first().json; if (checkNode3) node3Data = checkNode3; } catch (e) { console.log(\"Bypassed Node 3 lookup\"); }\n\n// הגנת ליבה על נתוני הכלליים בשורש\nconst sessionId = inputData.sessionId || logisticsResponse.sessionId || node6Data.sessionId || node3Data.sessionId || \"\";\nconst customerId = inputData.customerId || node6Data.customerId || node3Data.customerId || \"CUST-017\";\nconst customerEmail = inputData.customerEmail || node6Data.customerEmail || node3Data.customerEmail || \"sales@mellanox.com\";\nconst isDefense = inputData.isDefense || node6Data.isDefense || false;\n\nconst partNumber = inputData.partNumber || logisticsResponse.partNumber || node6Data.partNumber || node3Data.partNumber || \"\";\nconst quantity = Number(inputData.quantity || logisticsResponse.receivedQuantity || logisticsResponse.expectedQuantity || node6Data.quantity || 0);\nconst quoteId = inputData.quoteId || logisticsResponse.quoteId || node6Data.quoteId || node3Data.quoteId || \"\";\n\n// ==============================================\n// 1.5. מנגנון זיהוי כשל והתאוששות (ERROR / RECOVERY BYPASS)\n// ==============================================\nconst currentStatus = String(logisticsResponse.status || inputData.status || \"\").toUpperCase();\nconst currentNextAction = String(logisticsResponse.nextAction || inputData.nextAction || \"\").toUpperCase();\n\nconst upstreamFailed = currentStatus === \"ERROR\" || \n                       currentStatus === \"REJECTED\" || \n                       currentStatus === \"FAILED\" || \n                       currentStatus === \"BYPASSED_DUE_TO_ERROR\" ||\n                       currentNextAction === \"ADMIN_REVIEW\";\n\nif (upstreamFailed) {\n    console.log(\"Upstream agent flagged an error/rejection in Code 7. Initiating workflow bypass to Admin.\");\n    \n    return [{\n        json: {\n            ...node6Data,\n            ...inputData,\n            ...logisticsResponse,\n            sessionId,\n            partNumber,\n            quantity,\n            customerId,\n            customerEmail,\n            decision: \"SKIP\",\n            nextAction: \"ADMIN_REVIEW\",\n            status: \"BYPASSED_DUE_TO_ERROR\",\n            summary: logisticsResponse.summary || inputData.summary || \"Pipeline bypassed due to prior agent error or rejection.\",\n            results: {\n                ...(node6Data.results || inputData.results || {}),\n                Logistics: {\n                    status: currentStatus || \"REJECTED\",\n                    summary: logisticsResponse.summary || \"Logistics verification failed or rejected.\"\n                }\n            }\n        }\n    }];\n}\n\n// 3. זיהוי חד-משמעי ויציב של החלטת סוכן הלוגיסטיקה\nconst logisticsSkipped = \n    logisticsResponse.decision === \"SKIP\" || \n    logisticsResponse.status === \"SKIP\" || \n    inputData.decision === \"SKIP\";\n\nconst logisticsProcessedOrder = \n    !logisticsSkipped && \n    (logisticsResponse.decision === \"DELIVERED\" || \n     logisticsResponse.decision === \"IN_TRANSIT\" || \n     inputData.orderType === \"Order\" || \n     inputData.orderType === \"PO\" ||\n     node6Data.orderType === \"Order\");\n\n// 🔥 חילוץ דינמי טהור של עלויות הרכש מסוכן הרכש (ללא מספרים קשיחים!)\nlet supplierCostUSD = Number(node6Data.supplierCostUSD || (node6Data.data && node6Data.data.supplierCostUSD) || 0);\nlet supplierCostILS = Number(node6Data.totalCostILS || node6Data.supplierCostILS || (node6Data.data && node6Data.data.supplierCostILS) || inputData.supplierCostILS || 0);\n\n// הגנת חילוץ: אם סוכן הרכש דחף ערך דולרי לתוך שדה שנקרא ILS\nif (supplierCostUSD === 0 && supplierCostILS > 0) {\n    if (supplierCostILS < 15000) {\n        supplierCostUSD = supplierCostILS;\n        supplierCostILS = Number((supplierCostUSD * 3.75).toFixed(2));\n    } else {\n        supplierCostUSD = Number((supplierCostILS / 3.75).toFixed(2));\n    }\n}\nif (supplierCostILS === 0 && supplierCostUSD > 0) {\n    supplierCostILS = Number((supplierCostUSD * 3.75).toFixed(2));\n}\n\n// 🎯 חילוץ וקביעה דינמית של מחיר המכירה ללקוח\nlet customerPriceILS = 0;\n\n// סריקה לאחור בשכבות הצינור לאיתור מחיר המכירה שאישר הלקוח\nif (node3Data.totalPriceILS > 0) {\n    customerPriceILS = Number(node3Data.totalPriceILS);\n} else if (node4Data.quoteAmountILS > 0) {\n    customerPriceILS = Number(node4Data.quoteAmountILS);\n} else if (node4Data.totalPriceList > 0) {\n    customerPriceILS = Number(node4Data.totalPriceList);\n} else if (inputData.totalPriceILS > 0) {\n    customerPriceILS = Number(inputData.totalPriceILS);\n}\n\n// 🛡️ מנגנון פולבק מבוסס מרקאפ: אם ההיסטוריה נמחקה, מחשבים עלות רכש + 30%\nif (customerPriceILS === 0) {\n    if (supplierCostILS > 0) {\n        customerPriceILS = Number((supplierCostILS * 1.3).toFixed(2));\n    } else if (supplierCostUSD > 0) {\n        customerPriceILS = Number((supplierCostUSD * 1.3 * 3.75).toFixed(2));\n    }\n}\n\n// גזירת מחיר הלקוח בדולרים לצרכי מעקב ואינטגרציה\nconst customerPriceUSD = Number((customerPriceILS / 3.75).toFixed(2));\n\n// ==============================================\n// מצב א': דילוג / RFQ\n// ==============================================\nif (logisticsSkipped || !logisticsProcessedOrder || (!pipeline.includes(\"Finance\") && pipeline.length > 0)) {\n    const skipSummary = \"RFQ Stage: Finance skipped automatically. No invoice required.\";\n    return [{\n        json: {\n            ...node6Data,\n            ...inputData,\n            sessionId,\n            partNumber,\n            quantity,\n            quoteId,\n            customerPriceILS,\n            supplierCostILS,\n            supplierCostUSD,\n            customerPriceUSD,\n            orderType: \"RFQ\",\n            decision: \"SKIP\",\n            nextAction: \"NONE\",\n            status: \"success\",\n            goodsArrived: false,\n            response: JSON.stringify({\n                sessionId,    \n                status: \"SUCCESS\",\n                decision: \"SKIP\",\n                nextAction: \"NONE\",\n                partNumber,\n                quantity,\n                quoteId,\n                summary: skipSummary\n            })\n        }\n    }];\n}\n\n// ==============================================\n// מצב ב': תפעול אקטיבי - חילוץ והגנה על נתוני השורש עבור סוכן הכספים\n// ==============================================\nconst purchaseOrderId = logisticsResponse.poId || logisticsResponse.purchaseOrderId || logisticsResponse.pold || inputData.purchaseOrderId || node6Data.purchaseOrderId || \"PO-2026-001\";\n\n// הזרקה מפורשת של סכום האמת המדויק לתוך פקודת ההנחיה של סוכן הכספים בשקלים\nlet cleanFinanceInstruction = `Logistics Verification Successful: Goods for Purchase Order ${purchaseOrderId} have officially arrived at the warehouse and are verified as READY FOR PICKUP. Total verified quantity is ${quantity} units. Action Required: Finance Agent must now immediately generate the customer invoice for this order for the exact amount of ${customerPriceILS} ILS (Calculated using validated sales target price). Notify the customer to settle the payment immediately in ILS, and clear them for cargo pickup once paid. Do not use any other static billing amounts.`;\n\nconst financePayload = {\n    ...node6Data,\n    ...inputData,\n    sessionId,\n    customerId,\n    customerEmail,\n    isDefense,\n    currentStep: (inputData.currentStep !== undefined) ? Number(inputData.currentStep) + 1 : 6,\n    partNumber,\n    quantity: quantity,\n    quoteId,\n    \n    // 🔥 קיבוע סופי של מחירי האמת בשורש - ערוץ הרכש בנפרד וערוץ המכירה בשקלים בנפרד\n    totalAmountILS: customerPriceILS,\n    totalPriceList: customerPriceILS,\n    customerPriceILS,\n    supplierCostILS,\n    supplierCostUSD,\n    customerPriceUSD,\n    \n    purchaseOrderId,\n    orderType: \"Order\",\n    goodsArrived: true, \n    decision: \"PROCESS\",\n    nextAction: \"FINANCE\",\n    response: cleanFinanceInstruction,\n    \n    data: {\n        ...(node6Data.data || inputData.data || {}),\n        sessionId,\n        customerId,\n        customerEmail,\n        isDefense,\n        partNumber,\n        quantity: quantity,\n        quoteId,\n        totalPriceILS: customerPriceILS, \n        customerPriceILS,\n        supplierCostILS,\n        supplierCostUSD,\n        customerPriceUSD,\n        purchaseOrderId,\n        goodsArrived: true,\n        decision: \"PROCESS\"\n    }\n};\n\nreturn [{ json: financePayload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2832,
+        656
+      ],
+      "id": "15b38016-03f9-46b5-b970-7f2987e5b987",
+      "name": "Code in JavaScript7"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\n// ==============================================\n// 1. חילוץ בטוח של תגובת סוכן הכספים\n// ==============================================\nlet financeResponse = {};\nif (item.response) {\n    if (typeof item.response === 'string') {\n        try { \n            let cleaned = item.response.trim();\n            if (cleaned.startsWith(\"```\")) {\n                cleaned = cleaned.replace(/^```(?:json)?\\n?/, \"\").replace(/\\n?```$/, \"\").trim();\n            }\n            financeResponse = JSON.parse(cleaned); \n        } catch (e) { \n            console.log(\"Error parsing finance response in Node 8\"); \n        }\n    } else if (typeof item.response === 'object') {\n        financeResponse = item.response;\n    }\n}\n\n// ==============================================\n// 2. 🛡️ שליפת נתוני העומק ההיסטוריים מנוד 7 למניעת איבודי מידע בגלל תת-התזרים\n// ==============================================\nlet historicalData = {};\ntry {\n    const prevNode = $('Code in JavaScript7').first().json;\n    if (prevNode) {\n        historicalData = prevNode;\n    }\n} catch (e) {\n    console.log(\"Safely caught: Could not read from Code in JavaScript7\");\n}\n\n// ==============================================\n// 1.5. מנגנון זיהוי כשל והתאוששות (ERROR / RECOVERY DETECTOR)\n// ==============================================\nconst currentStatus = String(financeResponse.status || item.status || historicalData.status || \"\").toUpperCase();\nconst currentNextAction = String(financeResponse.nextAction || item.nextAction || historicalData.nextAction || \"\").toUpperCase();\n\nconst upstreamFailed = currentStatus === \"ERROR\" || \n                       currentStatus === \"REJECTED\" || \n                       currentStatus === \"FAILED\" || \n                       currentStatus === \"BYPASSED_DUE_TO_ERROR\" ||\n                       currentNextAction === \"ADMIN_REVIEW\";\n\nconst updatedResults = {\n    ...(historicalData.results || {}),\n    ...(item.results || {})\n};\n\n// תיעוד נתוני כספים רק אם הסוכן אכן רץ ולא דולג\nif (!item.skipped || (item.skipped && !item.skipped.includes(\"Finance\"))) {\n    updatedResults.Finance = {\n        status: financeResponse.status || (upstreamFailed ? \"REJECTED\" : \"SUCCESS\"),\n        invoiceId: financeResponse.invoiceId || \"NONE\",\n        amountPaid: financeResponse.totalAmountILS || item.totalPriceList || historicalData.customerPriceILS || 0,\n        summary: financeResponse.summary || item.summary || (upstreamFailed ? \"Finance stage bypassed or failed due to prior agent error/rejection.\" : \"\")\n    };\n}\n\nconst totalPrice = item.totalPriceList || historicalData.customerPriceILS || (historicalData.data && historicalData.data.totalPriceILS) || 0;\n\n// 🔥 חילוץ חסין רב-שכבתי המשלב את היסטוריית נוד 7 (פותר סופית את בעיית ה-undefined)\nconst finalPartNumber = item.partNumber || historicalData.partNumber || (historicalData.data && historicalData.data.partNumber) || financeResponse.partNumber || \"\";\nconst finalQuantity = Number(item.quantity || historicalData.quantity || (historicalData.data && historicalData.data.quantity) || financeResponse.quantity || 0);\nconst finalQuoteId = item.quoteId || historicalData.quoteId || (historicalData.data && historicalData.data.quoteId) || financeResponse.quoteId || \"\";\nconst finalSessionId = item.sessionId || financeResponse.sessionId || historicalData.sessionId || `SESS-${Date.now()}`;\n\nconst adminPayload = {\n    ...historicalData, // פריסת הנתונים ההיסטוריים המלאים כדי שלא יאבדו לסוכנים הבאים\n    ...item,\n    sessionId: finalSessionId,\n    partNumber: finalPartNumber, // הנגשה ישירה בשורש לסוכן האדמין\n    quantity: finalQuantity,     // הנגשה ישירה בשורש לסוכן האדמין\n    quoteId: finalQuoteId,       // הנגשה ישירה בשורש לסוכן האדמין\n    status: upstreamFailed ? \"BYPASSED_DUE_TO_ERROR\" : \"completed\",\n    decision: upstreamFailed ? \"SKIP\" : (item.decision || \"PROCESS\"),\n    nextAction: \"ADMIN_REVIEW\",\n    currentStep: item.pipeline ? item.pipeline.length : 4,\n    results: updatedResults,\n\n    // אובייקט משוטח לחלוטין ומאובטח דינמית לעדכון הגיליונות באדמין\n    finalSummary: {\n        sessionId: finalSessionId,\n        partNumber: finalPartNumber, \n        quantity: finalQuantity,     \n        quoteId: finalQuoteId,\n        invoiceId: updatedResults.Finance ? updatedResults.Finance.invoiceId : \"NONE\",\n        totalAmountILS: totalPrice,\n        orderType: item.orderType || historicalData.orderType || \"RFQ\",\n        skippedSteps: item.skipped || (upstreamFailed ? \"BYPASSED_TO_ADMIN\" : \"NONE\"),\n        status: upstreamFailed ? \"FAILED_OR_REJECTED\" : \"COMPLETED\",\n        timestamp: new Date().toISOString()\n    }\n};\n\nconsole.log(\"=== CODE 8 FINAL OUTPUT RECOVERED ===\");\nreturn [{ json: adminPayload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3488,
+        656
+      ],
+      "id": "53ff9177-a3c8-4a3e-ba66-76c4ee3b0b9a",
+      "name": "Code in JavaScript8"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $json;\n\n// 1. חילוץ בטוח של תגובת סוכן האדמין (בין אם היא מחרוזת או אובייקט)\nlet adminResponse = {};\nif (item.response) {\n    if (typeof item.response === 'string') {\n        try {\n            let cleaned = item.response.trim();\n            if (cleaned.startsWith(\"```\")) {\n                cleaned = cleaned.replace(/^```(?:json)?\\n?/, \"\").replace(/\\n?```$/, \"\").trim();\n            }\n            adminResponse = JSON.parse(cleaned);\n        } catch (e) {\n            console.log(\"Error parsing admin response\");\n        }\n    } else if (typeof item.response === 'object') {\n        adminResponse = item.response;\n    }\n}\n\n// 2. 🛡️ שליפת נתוני העומק ההיסטוריים מנוד 8 לפני שסוכן האדמין מחק אותם\nlet historicalData = {};\ntry {\n    const prevNode = $('Code in JavaScript8').first().json;\n    if (prevNode) {\n        historicalData = prevNode;\n    }\n} catch (e) {\n    console.log(\"Safely caught: Could not read from Code in JavaScript8\");\n}\n\n// 3. חילוץ חסין רב-שכבתי של כל משתני הליבה עבור תבנית המייל\nconst finalSessionId = item.sessionId || adminResponse.sessionId || historicalData.sessionId || \"\";\nconst finalPartNumber = item.partNumber || adminResponse.targetRecord || historicalData.partNumber || (historicalData.finalSummary && historicalData.finalSummary.partNumber) || \"N/A\";\nconst finalQuantity = Number(item.quantity || historicalData.quantity || (historicalData.finalSummary && historicalData.finalSummary.quantity) || 0);\nconst finalCustomerId = item.customerId || adminResponse.customerId || historicalData.customerId || \"CUST-017\";\nconst finalOrderType = item.orderType || adminResponse.orderType || historicalData.orderType || (historicalData.finalSummary && historicalData.finalSummary.orderType) || \"RFQ\";\nconst finalStatus = item.status || adminResponse.status || historicalData.status || \"complete\";\n\n// 4. בניית אובייקט משוטח לחלוטין - כל השדות נגישים ישירות בשורש עבור נוד הג'ימייל!\nconst emailPayload = {\n    ...historicalData, // משמר את כל ההיסטוריה המלאה ותוצאות הסוכנים\n    ...item,\n    sessionId: finalSessionId,\n    partNumber: finalPartNumber,\n    quantity: finalQuantity,\n    customerId: finalCustomerId,\n    orderType: finalOrderType,\n    status: finalStatus,\n    completedAgents: Object.keys(historicalData.results || {}),\n    skippedAgents: Object.keys(historicalData.skipped || {}),\n    summary: adminResponse.summary || item.summary || (historicalData.finalSummary && historicalData.finalSummary.summary) || \"The automation pipeline has completed all processing stages successfully.\"\n};\n\nconsole.log(\"=== CODE 9 FINAL FLAT EMAIL PAYLOAD RECOVERED ===\");\nreturn [{ json: emailPayload }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3904,
+        656
+      ],
+      "id": "16a9b667-b28a-43cf-8704-02ca16ca5bfd",
+      "name": "Code in JavaScript9"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ \n{\n  \"response\": \"The multi-agent enterprise pipeline completed successfully! The operational chain processed all relevant stages sequentially. \\n\\n📋 **Execution Summary:**\\n\" + \n  \"• Technical Evaluation: \" + ($json.technicalSummary || \"Completed\") + \"\\n\" +\n  \"• Quotation Status: \" + ($json.status || \"Processed\") + \"\\n\" +\n  \"• Session ID: \" + ($json.sessionId || \"N/A\")\n} \n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        4320,
+        448
+      ],
+      "id": "71158b17-ee61-4558-92ee-aea1b7f39b85",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==============================================\n// STEP 1: Get the email data from Gmail trigger\n// ==============================================\nconst inputData = $json;\nlet emailBody = \"\";\nlet subject = \"\";\nlet from = \"\";\n\nconsole.log(\"========== RAW INPUT ==========\");\nconsole.log(JSON.stringify(inputData, null, 2));\nconsole.log(\"=================================\");\n\n// ==============================================\n// חילוץ SUBJECT\n// ==============================================\nsubject = inputData.Subject || inputData.subject || \"No Subject\";\n\n// ==============================================\n// חילוץ FROM\n// ==============================================\nfrom = inputData.From || inputData.from || \"Unknown Sender\";\n\n// ==============================================\n// חילוץ BODY - ניסיון מספר מקומות\n// ==============================================\n\n// 1. בדיקה אם יש body ישירות\nif (inputData.body) {\n    emailBody = inputData.body;\n    console.log(\"Found body directly\");\n}\n// 2. בדיקה אם יש payload עם body.data\nelse if (inputData.payload && inputData.payload.body && inputData.payload.body.data) {\n    try {\n        let base64 = inputData.payload.body.data.replace(/-/g, '+').replace(/_/g, '/');\n        emailBody = Buffer.from(base64, 'base64').toString('utf-8');\n        console.log(\"Decoded body from payload.body.data\");\n    } catch (e) {\n        emailBody = inputData.payload.body.data;\n        console.log(\"Failed to decode, used raw data\");\n    }\n}\n// 3. בדיקה אם יש payload.parts\nelse if (inputData.payload && inputData.payload.parts) {\n    console.log(\"Found payload.parts, extracting...\");\n    for (let part of inputData.payload.parts) {\n        if (part.mimeType === 'text/plain' && part.body && part.body.data) {\n            try {\n                let base64 = part.body.data.replace(/-/g, '+').replace(/_/g, '/');\n                emailBody = Buffer.from(base64, 'base64').toString('utf-8');\n                console.log(\"Decoded text/plain part\");\n                break;\n            } catch (e) {\n                emailBody = part.body.data;\n                console.log(\"Failed to decode text/plain, used raw\");\n            }\n        }\n        // אם מצאנו HTML וטרם מצאנו טקסט\n        if (!emailBody && part.mimeType === 'text/html' && part.body && part.body.data) {\n            try {\n                let base64 = part.body.data.replace(/-/g, '+').replace(/_/g, '/');\n                let html = Buffer.from(base64, 'base64').toString('utf-8');\n                emailBody = html.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ');\n                console.log(\"Decoded text/html part\");\n            } catch (e) {\n                // נמשיך הלאה\n            }\n        }\n        // אם יש nested parts\n        if (part.parts) {\n            for (let subPart of part.parts) {\n                if (subPart.mimeType === 'text/plain' && subPart.body && subPart.body.data) {\n                    try {\n                        let base64 = subPart.body.data.replace(/-/g, '+').replace(/_/g, '/');\n                        emailBody = Buffer.from(base64, 'base64').toString('utf-8');\n                        console.log(\"Decoded nested text/plain part\");\n                        break;\n                    } catch (e) {\n                        // נמשיך הלאה\n                    }\n                }\n            }\n        }\n    }\n}\n// 4. אם יש snippet\nelse if (inputData.snippet) {\n    emailBody = inputData.snippet;\n    console.log(\"Using snippet\");\n}\n// 5. אם יש text\nelse if (inputData.text) {\n    emailBody = inputData.text;\n    console.log(\"Using text\");\n}\n// 6. אם יש html\nelse if (inputData.html) {\n    emailBody = inputData.html.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ');\n    console.log(\"Using html\");\n}\n// 7. Fallback\nelse {\n    emailBody = JSON.stringify(inputData);\n    console.log(\"Using JSON.stringify fallback\");\n}\n\n// ==============================================\n// DEBUG - הדפסת המייל\n// ==============================================\nconsole.log(\"========== EMAIL BODY ==========\");\nconsole.log(emailBody);\nconsole.log(\"=================================\");\nconsole.log(\"Subject:\", subject);\nconsole.log(\"From:\", from);\n\n// ==============================================\n// STEP 2: חילוץ נתונים\n// ==============================================\n\nlet sessionId = inputData.sessionId || `SESS-${Date.now()}`;\nlet partNumber = \"NOT_FOUND\";\nlet quantity = 0;\nlet customerId = \"UNKNOWN\";\nlet customerEmail = \"\";\nlet application = \"standard\";\nlet isDefense = false;\nlet isUrgent = false;\nlet orderType = \"RFQ\"; // ברירת מחדל בטוחה\nlet customerApprovedQuote = false;\nlet supplier = \"\";\nlet supplierId = \"\";\nlet currentInventory = 0;\n\nfunction cleanText(text) {\n    if (!text) return \"\";\n    return text.replace(/[^A-Za-z0-9\\-\\.\\s]/g, '').trim();\n}\n\n// ==============================================\n// חילוץ PART NUMBER\n// ==============================================\nlet partMatch = emailBody.match(/Part\\s*Number[:\\s]+([A-Z0-9\\-]+)/i) ||\n                emailBody.match(/Part Number[:\\s]+([A-Z0-9\\-]+)/i) ||\n                emailBody.match(/PN[:\\s]+([A-Z0-9\\-]+)/i) ||\n                emailBody.match(/SKU[:\\s]+([A-Z0-9\\-]+)/i) ||\n                emailBody.match(/(9GV[A-Z0-9\\-]+)/i) ||\n                emailBody.match(/([A-Z0-9]{6,}[A-Z0-9\\-]*)/i);\n\nif (partMatch && partMatch[1]) {\n    partNumber = cleanText(partMatch[1]);\n}\nconsole.log(\"Part Number:\", partNumber);\n\n// ==============================================\n// חילוץ QUANTITY\n// ==============================================\nlet qtyMatch = emailBody.match(/Quantity[:\\s]+(\\d+)\\s*units?/i) ||\n               emailBody.match(/Quantity[:\\s]+(\\d+)/i) ||\n               emailBody.match(/Qty[:\\s]+(\\d+)/i) ||\n               emailBody.match(/(\\d+)\\s*units/i) ||\n               emailBody.match(/(\\d+)\\s*pieces/i) ||\n               emailBody.match(/(\\d+)\\s*יחידות/i);\n\nif (qtyMatch && qtyMatch[1]) {\n    quantity = parseInt(qtyMatch[1]);\n}\nconsole.log(\"Quantity:\", quantity);\n\n// ==============================================\n// חילוץ CUSTOMER (תיקון: חובת סימן נקודתיים כדי לעקוף את כותרת ה-Details)\n// ==============================================\nlet custMatch = emailBody.match(/Customer\\s*:\\s*([A-Za-z0-9\\s\\-]+)/i) ||\n                emailBody.match(/Customer ID\\s*:\\s*([A-Za-z0-9\\s\\-]+)/i);\n\nif (custMatch && custMatch[1]) {\n    let raw = cleanText(custMatch[1]);\n    // המרה ל-Customer ID\n    if (raw.match(/most|ltd|most ltd/i)) {\n        customerId = \"CUST-001\";\n    } else if (raw.match(/iai/i)) {\n        customerId = \"CUST-002\";\n    } else if (raw.match(/rafael/i)) {\n        customerId = \"CUST-003\";\n    } else if (raw.match(/elbit/i)) {\n        customerId = \"CUST-004\";\n    } else if (raw.match(/mod|ministry of defense/i)) {\n        customerId = \"CUST-023\";\n    } else if (raw.match(/mellanox/i)) {\n        customerId = \"CUST-017\";\n    } else {\n        customerId = raw;\n    }\n}\nconsole.log(\"Customer ID:\", customerId);\n\n// ==============================================\n// חילוץ CUSTOMER EMAIL\n// ==============================================\nlet emailMatch = emailBody.match(/Email[:\\s]+([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})/i);\nif (emailMatch && emailMatch[1]) {\n    customerEmail = emailMatch[1];\n} else {\n    let fromStr = typeof from === 'string' ? from : JSON.stringify(from);\n    let fromEmail = fromStr.match(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})/);\n    if (fromEmail && fromEmail[1]) {\n        customerEmail = fromEmail[1];\n    }\n}\nconsole.log(\"Customer Email:\", customerEmail);\n\n// ==============================================\n// זיהוי APPLICATION\n// ==============================================\nif (emailBody.match(/defense|military|iai|rafael|elbit|mod|defence/i)) {\n    isDefense = true;\n    application = \"defense\";\n} else if (emailBody.match(/medical|fda|healthcare|hospital|clinical|medtronic|philips/i)) {\n    isDefense = true;\n    application = \"medical\";\n} else if (emailBody.match(/industrial|factory|manufacturing/i)) {\n    application = \"industrial\";\n}\nconsole.log(\"Application:\", application);\n\n// ==============================================\n// זיהוי URGENT\n// ==============================================\nif (emailBody.match(/urgent|asap|emergency|immediate|priority|rush/i)) {\n    isUrgent = true;\n}\nconsole.log(\"Is Urgent:\", isUrgent);\n\n// ==============================================\n// זיהוי ORDER TYPE (זיהוי מורחב: PO, RFQ, RFI)\n// ==============================================\nif (emailBody.match(/\\bPurchase Order\\b|\\bPO\\b/i) || emailBody.match(/accept the quotation|issue our official purchase order/i)) {\n    orderType = \"PO\";\n} else if (emailBody.match(/Quote Request|\\bRFQ\\b|request for quote|price request|pricing|quotation/i)) {\n    orderType = \"RFQ\";\n} else if (emailBody.match(/datasheet|catalog|specs|specification|recommendation|lowest noise|power consumption|RFI|information/i)) {\n    orderType = \"RFI\";\n} else {\n    orderType = \"RFQ\"; // ברירת מחדל\n}\nconsole.log(\"Order Type:\", orderType);\n\n// ==============================================\n// זיהוי CUSTOMER APPROVED QUOTE\n// ==============================================\nif (emailBody.match(/Customer Approved Quote|approved in advance|quote approved|pre-approved|accept the quotation|formal accept/i)) {\n    customerApprovedQuote = true;\n}\nconsole.log(\"Customer Approved Quote:\", customerApprovedQuote);\n\n// ==============================================\n// חילוץ SUPPLIER\n// ==============================================\nlet suppMatch = emailBody.match(/Supplier[:\\s]+([A-Za-z0-9\\s\\-]+)/i);\nif (suppMatch && suppMatch[1]) {\n    supplier = cleanText(suppMatch[1]);\n    if (supplier.match(/sanyo/i)) {\n        supplierId = \"SUP-001\";\n    } else if (supplier.match(/sony/i)) {\n        supplierId = \"SUP-002\";\n    } else if (supplier.match(/texas instruments|ti/i)) {\n        supplierId = \"SUP-003\";\n    } else if (supplier.match(/maxon/i)) {\n        supplierId = \"SUP-004\";\n    } else if (supplier.match(/amphenol/i)) {\n        supplierId = \"SUP-005\";\n    }\n}\nconsole.log(\"Supplier ID:\", supplierId);\n\n// ==============================================\n// STEP 3: Build the output\n// ==============================================\n\nconst output = {\n    sessionId: sessionId,\n    partNumber: partNumber === \"NOT_FOUND\" ? \"\" : partNumber,\n    quantity: quantity,\n    customerId: customerId,\n    customerEmail: customerEmail || \"\",\n    application: application,\n    isDefense: isDefense,\n    isUrgent: isUrgent,\n    orderType: orderType,\n    customerApprovedQuote: customerApprovedQuote,\n    supplier: supplier,\n    supplierId: supplierId,\n    currentInventory: currentInventory,\n    subject: subject,\n    from: from,\n    originalEmail: emailBody.substring(0, 2000)\n};\n\nconsole.log(\"========== FINAL OUTPUT ==========\");\nconsole.log(JSON.stringify(output, null, 2));\n\nreturn [{\n    json: output\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        336
+      ],
+      "id": "b751cfea-7a31-4e5c-84a6-85c3edac61ad",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "-from:me"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -384,
+        400
+      ],
+      "id": "fb029931-a0ba-43ce-90f6-6038354a62de",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =================================================================\n// Guardrail Filter Node - ממוקם ישירות בין הג'ימייל טריגר לקוד נוד 1\n// =================================================================\nconst email = $json;\n\n// חילוץ נושא המייל וטקסט בלבד (ללא HTML כדי למנוע זליגת מילים מקישורים/תגיות)\nconst subject = (email.subject || \"\").toLowerCase();\n// אנו לוקחים את הטקסט הנקי, ואם אין - מנקים תגיות HTML בסיסיות\nconst rawBody = (email.text || (email.html || \"\").replace(/<[^>]*>?/gm, '')).toLowerCase().slice(0, 1500); \n\n// 1. הגדרת רשימת מילות המפתח הרשמית (RFQ & PO)\nconst criticalKeywords = [\n    // אנגלית - RFQ & PO\n    \"rfq\", \"request for quote\", \"quote\", \"price inquiry\", \"pricelist\", \"part number\", \"catalog\",\n    \"purchase order\", \"customer order\", \"supplier order\", \"rfq/po\",\n    // עברית - RFQ & PO\n    \"הצעת מחיר\", \"בקשה להצעת מחיר\", \"מחירון\", \"מק\\\"ט\", \"מקט\", \"קטלוג\",\n    \"הזמנת רכש\", \"אישור הזמנה\"\n];\n\n// מילות מפתח קצרות שדורשות בדיקת מילה שלמה בלבד (כדי למנוע התאמה ל-order בתוך border, order בתוך קישור וכו')\nconst strictShortKeywords = [\"po\", \"order\", \"invoice\", \"billing\", \"רכש\", \"הזמנה\"];\n\n// 2. סריקה אקטיבית\nlet isSupplyChainEmail = criticalKeywords.some(keyword => {\n    return subject.includes(keyword) || rawBody.includes(keyword);\n});\n\n// בדיקת מילים קצרות במבנה מילה שלמה בלבד\nif (!isSupplyChainEmail) {\n    const fullText = `${subject} ${rawBody}`;\n    isSupplyChainEmail = strictShortKeywords.some(keyword => {\n        const regex = new RegExp(`\\\\b${keyword}\\\\b`, 'i');\n        return regex.test(fullText);\n    });\n}\n\n// 3. מנגנון סינון והחלטה\nif (isSupplyChainEmail) {\n    console.log(\"Guardrail Passed: Valid supply chain trigger detected.\");\n    return [{ json: email }];\n} else {\n    console.log(\"Guardrail Blocked: Email dropped. No relevant keywords found.\");\n    return []; // החזרת מערך ריק עוצרת את השרשרת\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        368
+      ],
+      "id": "237b3722-afa1-4d96-b263-655b4f907b9e",
+      "name": "Guardrail_Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =================================================================\n// Guardrail Filter Node - תומך גם ב-Gmail וגם ב-Webhook מ-Open WebUI\n// =================================================================\nconst inputData = $json;\n\n// חילוץ טקסט מכל מקור אפשרי (Gmail או Webhook)\nconst subject = (inputData.subject || \"\").toLowerCase();\nconst body = (inputData.text || inputData.html || inputData.prompt || \"\").toLowerCase();\n\n// המרת כל האובייקט למחרוזת ליתר בטחון\nconst fullPayloadString = JSON.stringify(inputData).toLowerCase();\n\n// 1. הגדרת רשימת מילות המפתח הרשמית של שרשרת האספקה (RFQ & PO)\nconst criticalKeywords = [\n    // אנגלית - עולם ה-RFQ והרכיבים\n    \"rfq\", \"request for quote\", \"quote\", \"price inquiry\", \"pricelist\", \"part number\", \"catalog\", \"components\",\n    // אנגלית - עולם ה-PO והכספים\n    \"po\", \"purchase order\", \"order\", \"invoice\", \"billing\", \"customer order\", \"supplier order\",\n    // עברית - עולם ה-RFQ והרכיבים\n    \"הצעת מחיר\", \"בקשה להצעת מחיר\", \"מחירון\", \"מק\\\"ט\", \"מקט\", \"קטלוג\",\n    // עברית - עולם ה-PO והכספים\n    \"הזמנה\", \"הזמנת רכש\", \"חשבונית\", \"רכש\", \"אישור הזמנה\"\n];\n\n// 2. סריקה אקטיבית: בדיקה האם לפחות מילה אחת קיימת בשדה כלשהו\nconst isSupplyChainRequest = criticalKeywords.some(keyword => {\n    return subject.includes(keyword) || body.includes(keyword) || fullPayloadString.includes(keyword);\n});\n\n// 3. מנגנון סינון והחלטה\nif (isSupplyChainRequest) {\n    console.log(\"Guardrail Passed: Valid supply chain trigger detected.\");\n    return [{ json: inputData }];\n} else {\n    console.log(\"Guardrail Blocked: Request dropped. No relevant keywords found.\");\n    return [];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "befd04bd-a636-46bd-9ff5-21480d41ea08",
+      "name": "Guardrail_Filter1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "3F3tWAxWNBfGCR9P",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/3F3tWAxWNBfGCR9P",
+          "cachedResultName": "Technical_Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1632,
+        192
+      ],
+      "id": "339590c1-e5e8-4760-8db4-2b2a838d0c91",
+      "name": "Call 'Technical_Agent'"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "cnyCoT1hcBzsDHR6",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/cnyCoT1hcBzsDHR6",
+          "cachedResultName": "Pricing_Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2096,
+        112
+      ],
+      "id": "9f66fa47-9836-4c71-9988-f839b16080f0",
+      "name": "Call 'Pricing_Agent'"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "A4kgrXhIhEmzzpSg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/A4kgrXhIhEmzzpSg",
+          "cachedResultName": "CRM_Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2784,
+        128
+      ],
+      "id": "632ba3b1-f891-49c9-b5d0-a5d75dead3c4",
+      "name": "Call 'CRM_Agent'"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "r8FJS8SkFQBdyc9T",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/r8FJS8SkFQBdyc9T",
+          "cachedResultName": "Procurement_Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3632,
+        96
+      ],
+      "id": "a7cd1815-0f6f-4abf-a2dd-d2ae9c37707a",
+      "name": "Call 'Procurement_Agent'"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "yhlLYUZhGPF2s8J2",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/yhlLYUZhGPF2s8J2",
+          "cachedResultName": "Logistic_Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2528,
+        656
+      ],
+      "id": "bf0c5e7c-5b9e-42ca-9afc-b4e02fe385b2",
+      "name": "Call 'Logistic_Agent'"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "3MC22hMIv1dvrYdR",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/3MC22hMIv1dvrYdR",
+          "cachedResultName": "Finance_Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3280,
+        656
+      ],
+      "id": "47936fec-b65f-4d7d-b077-794ab7ef0300",
+      "name": "Call 'Finance_Agent'"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "wZusLQBqoRxOoFSF",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/wZusLQBqoRxOoFSF",
+          "cachedResultName": "Admin_Agent"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        3712,
+        656
+      ],
+      "id": "141fa586-b41a-4d4c-a2cc-0bc846e30dc8",
+      "name": "Call 'Admin_Agent'"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9ab27ca3-6d6e-4c9a-8a2f-c8d671fce9cb",
+              "leftValue": "={{ \n  (() => {\n    try {\n      const resp = typeof $json.session_payload === 'string' ? JSON.parse($json.session_payload) : ($json.session_payload || {});\n      const nextAct = resp.nextAction || $json.nextAction;\n      const status = resp.status || $json.status;\n      return nextAct !== 'STOP' && status !== 'REJECTED_BY_ADMIN' && status !== 'REJECTED';\n    } catch(e) {\n      return true;\n    }\n  })()\n}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3232,
+        112
+      ],
+      "id": "26c1d066-6486-4637-aaad-696f379040d1",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c45156e3-85c2-43b4-a6d9-a7dfd8ec2bd5",
+              "leftValue": "={{\n  (() => {\n    try {\n      const res = typeof $json.response === 'string' ? JSON.parse($json.response) : ($json.response || $json);\n      const status = (res.status || res.nextAction || res.decision || '').toString().toUpperCase();\n      // מחזיר true אם התהליך הצליח ללא חריגת סכום\n      return status === 'SUCCESS' || status === 'COMPLETED' || status === 'APPROVED';\n    } catch(e) {\n      return false;\n    }\n  })()\n}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3968,
+        224
+      ],
+      "id": "df7db9f3-9529-4918-a0c1-a74b583f91bf",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Pw0xxKeBU9XfSNqCtSzFUXd10BofGOaJPYKB69D7gUg",
+          "mode": "list",
+          "cachedResultName": "Pricelist_Master_Clean",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Pw0xxKeBU9XfSNqCtSzFUXd10BofGOaJPYKB69D7gUg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 76518482,
+          "mode": "list",
+          "cachedResultName": "Business_Rules",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Pw0xxKeBU9XfSNqCtSzFUXd10BofGOaJPYKB69D7gUg/edit#gid=76518482"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        352,
+        224
+      ],
+      "id": "0f86eb69-9583-4798-b9e1-2e7e5e19dbb3",
+      "name": "Get_Business_Rules1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. עיבוד חוקי העסק מ-Google Sheets\nconst businessRules = {};\nfor (const item of $input.all()) {\n  const key = item.json.Rule_Key;\n  let value = item.json.Value;\n\n  if (value !== '' && !isNaN(value)) {\n    value = Number(value);\n  }\n\n  if (key) {\n    businessRules[key] = value;\n  }\n}\n\n// 2. שאיבת נתוני המקור בבטחה (ללא נפילה על Nodes שלא רצו)\nlet rawIncoming = {};\n\ntry {\n  // ניסיון ראשון: קריאת ה-Input האמיתי שנכנס ל-Google Sheets\n  rawIncoming = $('Get_Business_Rules1').item.json._input || {};\n} catch (e) {}\n\nif (!rawIncoming || Object.keys(rawIncoming).length === 0) {\n  try {\n    // ניסיון שני: Webhook\n    rawIncoming = $('Guardrail_Filter1').first().json || {};\n  } catch (e) {\n    try {\n      // ניסיון שלישי: Gmail\n      rawIncoming = $('Code in JavaScript1').first().json || {};\n    } catch (err) {\n      rawIncoming = $json || {};\n    }\n  }\n}\n\n// 3. חילוץ הטקסט החופשי\nconst rawBody = rawIncoming.body?.body || rawIncoming.body || rawIncoming.text || rawIncoming.html || (typeof rawIncoming === 'string' ? rawIncoming : '');\n\n// 4. חילוץ שדות ב-Regex + Fallback לשדות שטוחים\nconst extractedQuantity = rawIncoming.quantity || \n  rawIncoming.body?.quantity || \n  Number(rawBody.match(/Quantity:\\s*(\\d+)/i)?.[1]) || 0;\n\nconst extractedPartNumber = rawIncoming.partNumber || \n  rawIncoming.part_number || \n  rawIncoming.body?.partNumber || \n  (rawBody.match(/Part\\s*Number:\\s*([^\\s\\n\\r\\/]+)/i)?.[1] || '').trim();\n\nconst extractedOrderType = rawIncoming.orderType || \n  rawIncoming.order_type || \n  rawIncoming.body?.orderType || \n  (rawBody.match(/Order\\s*Type:\\s*(RFQ|PO)/i)?.[1] || 'RFQ').toUpperCase();\n\nconst extractedCustomerId = rawIncoming.customerId || \n  rawIncoming.customer_id || \n  rawIncoming.body?.customerId || \n  (rawBody.match(/Customer\\s*ID:\\s*([^\\s\\n\\r]+)/i)?.[1] || '');\n\nconst extractedCustomerEmail = rawIncoming.customerEmail || \n  rawIncoming.customer_email || \n  rawIncoming.body?.customerEmail || \n  (rawBody.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})/)?.[1] || '');\n\n// 5. החזרת אובייקט שטוח ומלא\nreturn [\n  {\n    json: {\n      ...rawIncoming,\n      sessionId: rawIncoming.sessionId || rawIncoming.session_id || 'SESS-' + Date.now(),\n      orderType: extractedOrderType,\n      partNumber: extractedPartNumber,\n      quantity: extractedQuantity,\n      customerId: extractedCustomerId,\n      customerEmail: extractedCustomerEmail,\n      body: rawBody,\n      business_rules: businessRules\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        192
+      ],
+      "id": "41b4b30a-371a-46ee-a344-e18c456f1a98",
+      "name": "Get_Business_Rules"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo",
+          "mode": "list",
+          "cachedResultName": "Quotes_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1962372725,
+          "mode": "list",
+          "cachedResultName": "Session_Store",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit#gid=1962372725"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $json.sessionId }}",
+            "created_at": "={{ $now.toISO() }}",
+            "updated_at": "={{ new Date().toISOString() }}",
+            "status": "IN_PROGRESS",
+            "current_step": "INITIALIZED",
+            "order_type": "={{ $json.orderType }}",
+            "partNumber": "={{ $json.partNumber }}",
+            "quantity": "={{ $json.quantity }}",
+            "session_payload": "={{ JSON.stringify($json) }}"
+          },
+          "matchingColumns": [
+            "session_id"
+          ],
+          "schema": [
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "current_step",
+              "displayName": "current_step",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "order_type",
+              "displayName": "order_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "session_payload",
+              "displayName": "session_payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        784,
+        192
+      ],
+      "id": "19faa9d7-4faf-4617-95f6-a5c3cf93a2b4",
+      "name": "Init_Session",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo",
+          "mode": "list",
+          "cachedResultName": "Quotes_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1962372725,
+          "mode": "list",
+          "cachedResultName": "Session_Store",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit#gid=1962372725"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $('Init_Session').item.json.session_id || $('Code in JavaScript1').item.json.sessionId }}",
+            "updated_at": "={{ new Date().toISOString() }}",
+            "status": "PROCESSED_BY_PRICING",
+            "current_step": "PRICING_COMPLETED",
+            "session_payload": "={{\n  JSON.stringify({\n    ...JSON.parse($('Init_Session').item.json.session_payload || '{}'),\n    ...((typeof $json.response === 'string' ? JSON.parse($json.response) : $json.response) || $json)\n  })\n}}",
+            "order_type": "={{ $json.orderType }}",
+            "partNumber": "={{ $json.partNumber }}",
+            "quantity": "={{ $json.quantity }}"
+          },
+          "matchingColumns": [
+            "session_id"
+          ],
+          "schema": [
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "current_step",
+              "displayName": "current_step",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "order_type",
+              "displayName": "order_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "session_payload",
+              "displayName": "session_payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2528,
+        128
+      ],
+      "id": "73f9573f-00d2-4e30-90f9-dfe191059c3e",
+      "name": "Update_Session_Pricing",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo",
+          "mode": "list",
+          "cachedResultName": "Quotes_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1962372725,
+          "mode": "list",
+          "cachedResultName": "Session_Store",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit#gid=1962372725"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $('Init_Session').item.json.session_id || $('Code in JavaScript1').item.json.sessionId }}",
+            "updated_at": "={{ new Date().toISOString() }}",
+            "status": "=={{ $json.authorizationRequired ? 'PENDING_MANAGER_APPROVAL' : 'PROCUREMENT_APPROVED' }}",
+            "current_step": "PROCUREMENT_EVALUATED",
+            "session_payload": "={{\n  JSON.stringify({\n    ...JSON.parse($('Init_Session').item.json.session_payload || '{}'),\n    ...((typeof $json.response === 'string' ? JSON.parse($json.response) : $json.response) || $json)\n  })\n}}",
+            "order_type": "={{ $json.orderType }}",
+            "partNumber": "={{ $json.partNumber }}",
+            "quantity": "={{ $json.quantity }}"
+          },
+          "matchingColumns": [
+            "session_id"
+          ],
+          "schema": [
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "current_step",
+              "displayName": "current_step",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "order_type",
+              "displayName": "order_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "session_payload",
+              "displayName": "session_payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2096,
+        656
+      ],
+      "id": "bec3e582-25cf-463f-a48e-1c4f65f3ba58",
+      "name": "Update_Session_Procurement",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo",
+          "mode": "list",
+          "cachedResultName": "Quotes_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1962372725,
+          "mode": "list",
+          "cachedResultName": "Session_Store",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit#gid=1962372725"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "PROCESSED_BY_CRM",
+            "current_step": "CRM_COMPLETED",
+            "session_payload": "={{ JSON.stringify($json) }}",
+            "order_type": "={{ $json.orderType || 'RFQ' }}",
+            "partNumber": "={{ $json.partNumber }}",
+            "quantity": "={{ $json.quantity || 0 }}",
+            "updated_at": "={{ new Date().toISOString() }}",
+            "session_id": "={{ $json.sessionId }}"
+          },
+          "matchingColumns": [
+            "session_id"
+          ],
+          "schema": [
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "current_step",
+              "displayName": "current_step",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "order_type",
+              "displayName": "order_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "session_payload",
+              "displayName": "session_payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3008,
+        128
+      ],
+      "id": "142b5726-6be2-4c51-91a0-b67e8cad7f81",
+      "name": "Update_Session_CRM",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// שליפת הנתונים המלאים מ-Code in JavaScript6 שחושבו לפני העדכון בשיטס\nconst js6Data = $('Code in JavaScript6').first().json || {};\nconst sessionData = $json || {};\n\n// מיזוג הנתונים כך שסוכן הלוגיסטיקה יקבל את כל השדות הנדרשים ברמה הראשית\nreturn {\n  json: {\n    ...sessionData,\n    sessionId: js6Data.sessionId || sessionData.session_id || \"\",\n    orderType: js6Data.orderType || \"PO\",\n    decision: js6Data.decision || \"ORDER_NOW\",\n    poId: js6Data.poId || js6Data.purchaseOrderId || js6Data.pold || \"PO-2026-649\",\n    partNumber: js6Data.partNumber || \"9GA0312P3G0011P\",\n    quantity: js6Data.quantity || 50000,\n    summary: js6Data.summary || \"\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        656
+      ],
+      "id": "d82db6b9-c4bf-446a-a6ed-4f271f93768c",
+      "name": "Prepare_For_Logistic"
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b-cloud",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        944,
+        400
+      ],
+      "id": "dc83c14e-9eac-424f-9895-a8f06b161778",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "cJuJhTz0PqFxzhEB",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Guardrail_Filter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orchestrator": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Call 'Technical_Agent'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Call 'Pricing_Agent'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Update_Session_Pricing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript5": {
+      "main": [
+        [
+          {
+            "node": "Call 'Procurement_Agent'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript6": {
+      "main": [
+        [
+          {
+            "node": "Update_Session_Procurement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript7": {
+      "main": [
+        [
+          {
+            "node": "Call 'Finance_Agent'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript8": {
+      "main": [
+        [
+          {
+            "node": "Call 'Admin_Agent'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript9": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Get_Business_Rules1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Guardrail_Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardrail_Filter": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardrail_Filter1": {
+      "main": [
+        [
+          {
+            "node": "Get_Business_Rules1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Technical_Agent'": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Pricing_Agent'": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'CRM_Agent'": {
+      "main": [
+        [
+          {
+            "node": "Update_Session_CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Procurement_Agent'": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Logistic_Agent'": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Finance_Agent'": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Admin_Agent'": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Business_Rules1": {
+      "main": [
+        [
+          {
+            "node": "Get_Business_Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get_Business_Rules": {
+      "main": [
+        [
+          {
+            "node": "Init_Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init_Session": {
+      "main": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update_Session_Pricing": {
+      "main": [
+        [
+          {
+            "node": "Call 'CRM_Agent'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update_Session_Procurement": {
+      "main": [
+        [
+          {
+            "node": "Prepare_For_Logistic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update_Session_CRM": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare_For_Logistic": {
+      "main": [
+        [
+          {
+            "node": "Call 'Logistic_Agent'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Orchestrator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "70wXsnmVq4KlUDHv",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "915c6327-9b9f-4591-aef2-595026d61c7d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "LKD0u5yhSg9LFGl9",
+  "tags": []
+}

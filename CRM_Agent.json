@@ -1,0 +1,1193 @@
+{
+  "name": "CRM_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Session ID: {{ $json.sessionId || $json.session_id }}\nPart Number: {{ $json.partNumber || $json.part_number }}\nQuantity: {{ $json.quantity }}\nCustomer ID: {{ $json.customerId || $json.customer_id || (typeof $json.session_payload === 'string' ? JSON.parse($json.session_payload).customerId : $json.session_payload?.customerId) }}\nOrder Type: {{ $json.orderType || $json.order_type || 'RFQ' }}\nTotal Price ILS: {{ $json.totalPriceILS || $json.quoteAmountILS || $json.finalTotalILS || (typeof $json.session_payload === 'string' ? JSON.parse($json.session_payload).totalPriceILS : $json.session_payload?.totalPriceILS) }}\nCustomer Email: {{ $json.customerEmail || $json.customer_email || (typeof $json.session_payload === 'string' ? JSON.parse($json.session_payload).customerEmail : $json.session_payload?.customerEmail) }}\nQuote ID: {{ $json.quoteId || (typeof $json.session_payload === 'string' ? JSON.parse($json.session_payload).quoteId : $json.session_payload?.quoteId) }}\nValid Until: {{ $json.validUntil || (typeof $json.session_payload === 'string' ? JSON.parse($json.session_payload).validUntil : $json.session_payload?.validUntil) }}\n\nProcess this request:\nCall Customer_Master_Lookup to verify customer details and credit limits using Customer ID.\n\nIf Order Type is RFQ:\n1. Call Log_Quote_To_Sheet to log the quotation using Quote ID, Customer ID, Quantity, and Total Price ILS.\n2. Call Send a message in Gmail tool to send the official quote to Customer Email using exact Quantity and Total Price ILS.\n\nIf Order Type is PO/Order:\n1. Call Lookup_Historical_Quote to verify historical price.\n2. Compare prices and set orderAccepted accordingly.\n3. Do NOT send emails from within this agent.\n\nReturn ONLY valid JSON containing sessionId, status, quoteId, customerId, customerName, creditStatus, availableCredit, quoteAmountILS, orderType, orderAccepted, nextAction, and summary.",
+        "options": {
+          "systemMessage": "You are the CRM & Sales Operations Specialist for Electro-Tech Representatives Ltd.\n\n## YOUR ROLE\nManage customer accounts, process incoming purchase orders (PO), and generate sales quotes (RFQ). You are an execution agent - receive tasks, execute precisely, and return structured results. Never ask questions or add conversational filler.\n\n## CORE RULES\n- **Dynamic Identity Rule**: Always map the unique `quoteId` from the incoming input directly to output fields (e.g., Q-2026-4393). Never construct or replace `quoteId` using `sessionId` digits.\n- **Single Execution Rule**: Execute each required tool exactly ONCE. Proceed sequentially without repeating tool calls.\n- **Email Content Rule (RFQ Stage Only)**: When invoking `Send a message in Gmail` during RFQ flows, you MUST explicitly pass all dynamic parameters with non-empty values from input/calculation: `quoteId`, `partNumber`, `quantity`, `totalPriceList` (with ₪ symbol), `validUntil` (input value or today+30 days), and `customerEmail`. Include a structured HTML body containing these details.\n- **PO Email Separation**: Do NOT call email tools during a PO flow. PO confirmations/rejections are handled externally by downstream workflow nodes.\n\n## YOUR TOOLS\n1. `Customer_Master_Lookup` - Look up customer details and credit limits using `customerId`.\n2. `Log_Quote_To_Sheet` - Append new quote records to Quotes_Log sheet (RFQ stage).\n3. `Lookup_Historical_Quote` - Search original quote details by `customerId` and `partNumber` (PO stage).\n4. `Send a message in Gmail` - Send formal price quotation email to customer (RFQ stage ONLY).\n\n## PROCESSING STEPS\n\n### IF orderType is \"RFQ\":\n1. Call `Customer_Master_Lookup` with `customerId` to fetch account details.\n2. Calculate available credit: `availableCredit = creditLimit - currentCreditUsed`.\n3. Call `Log_Quote_To_Sheet` once using the dynamic `quoteId`.\n4. Construct an official HTML email table (Quote ID, Part Number, Quantity, Total Price in ₪, Valid Until, Payment Terms: Net 30).\n5. Call `Send a message in Gmail` once passing the full email body and parameters (`quoteId`, `partNumber`, `quantity`, `totalPriceList`, `validUntil`, `customerEmail`).\n6. Set status = \"SUCCESS\", orderType = \"RFQ\", orderAccepted = null, and nextAction = \"PROCUREMENT\".\n\n### IF orderType is \"PO\" (or \"Order\"):\n1. Call `Customer_Master_Lookup` with `customerId` to get `availableCredit`.\n2. Call `Lookup_Historical_Quote` with `customerId` and `partNumber`.\n3. Evaluate BOTH rules:\n   - Rule 1 (Price Match): Incoming `totalPriceILS` MUST match historical quote price.\n   - Rule 2 (Credit Limit): Incoming `quoteAmountILS` MUST BE LESS THAN OR EQUAL TO `availableCredit`.\n\n   - **IF BOTH RULES PASS** (Price matches AND `quoteAmountILS` <= `availableCredit`):\n     Set status = \"SUCCESS\", orderAccepted = true, authorizationRequired = false, nextAction = \"PROCUREMENT\".\n\n   - **IF EITHER RULE FAILS** (Price mismatch OR `quoteAmountILS` > `availableCredit`):\n     Set status = \"REJECTED\", orderAccepted = false, authorizationRequired = true, nextAction = \"ADMIN_REVIEW\".\n\n### IF orderType is \"RFI\", \"INFORMATION\", \"DATASHEET\", \"CATALOG\", OR pipeline excludes your agent:\nSkip processing and immediately set status = \"SKIPPED\" with reason = \"RFI / Technical Information request only\".\n\n## CRITICAL OUTPUT INSTRUCTION FOR OLLAMA\nAfter completing all required tool calls, your final response MUST end with a single raw JSON block containing all variables (`sessionId`, `status`, `quoteId`, `customerId`, `customerName`, `creditStatus`, `availableCredit`, `quoteAmountILS`, `orderType`, `orderAccepted`, `authorizationRequired`, `nextAction`, `summary`). Do NOT use markdown code fences."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -64,
+        160
+      ],
+      "id": "b0391c42-ab6a-471c-a9fa-51a248c3769a",
+      "name": "CRM_Agent"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Look up customer information from the Customer_Master sheet using customerId. Returns customerName, creditLimit, currentCreditUsed, paymentTerms, isDefense, and email. Use this to check customer credit status.",
+        "documentId": {
+          "__rl": true,
+          "value": "1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ",
+          "mode": "list",
+          "cachedResultName": "Customer_Master_Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Customers",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "CustomerID",
+              "lookupValue": "={{ $fromAI('customerId') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        160,
+        304
+      ],
+      "id": "4054d714-6ad0-4b11-b1a4-8c516469b377",
+      "name": "Customer_Master_Lookup",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Appends a new quote record to the Quotes_Log sheet. \n\nREQUIRED INPUT JSON SCHEMA:\n{\n  \"quote_id\": \"STRING (Must be unique for every call, e.g., Q-YYYY-XXXX)\",\n  \"customer_id\": \"STRING\",\n  \"part_number\": \"STRING\",\n  \"quantity\": NUMBER,\n  \"unit_price\": NUMBER,\n  \"total_amount\": NUMBER,\n  \"status\": \"STRING (e.g., OPEN, SENT, PENDING_REVIEW)\"\n}\n\nDo not reuse old quote_ids. Always output JSON matching this exact schema.",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo",
+          "mode": "list",
+          "cachedResultName": "Quotes_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1408906582,
+          "mode": "list",
+          "cachedResultName": "Quotes",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit#gid=1408906582"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "quoteId": "={{ $json.quoteId || $json.quote_id || $('When Executed by Another Workflow').first().json.quoteId || $('When Executed by Another Workflow').first().json.sessionId }}",
+            "sessionId": "={{ $json.sessionId || $json.session_id }}",
+            "customerId": "={{ $json.customerId || $json.customer_id || $('When Executed by Another Workflow').first().json.customerId }}",
+            "partNumber": "={{ $json.partNumber || $json.part_number }}",
+            "quantity": "={{ $json.quantity || $json.qty }}",
+            "totalPriceILS": "={{ $json.total_amount || $fromAI('totalPriceILS') || $json.totalPriceILS || $json.quoteAmountILS }}",
+            "validUntil": "={{ $json.validUntil || $now.plus({ days: 30 }).toFormat('yyyy-MM-dd') }}",
+            "status": "={{ $json.status || 'OPEN' }}",
+            "distributionChannels": "={{ typeof $json.distributionChannels === 'object' ? JSON.stringify($json.distributionChannels) : ($json.distributionChannels || 'Email') }}",
+            "toolCallId": "={{ $json.toolCallId || $json.tool_call_id }}",
+            "pipeline": "={{ $json.pipeline || 'Procurement_Agent' }}",
+            "currentStep": "={{ $json.currentStep || 1 }}",
+            "totalSteps": "={{ $json.totalSteps || 3 }}",
+            "customerEmail": "={{ $json.customerEmail || $json.email }}",
+            "isDefense": "={{ $json.isDefense || false }}",
+            "isUrgent": "={{ $json.isUrgent || false }}",
+            "orderType": "={{ $json.orderType || 'Standard' }}",
+            "customerApprovedQuote": "={{ $json.customerApproved || false }}",
+            "totalPriceList": "={{ $json.totalPriceList || $json.price_list }}",
+            "data": "={{ typeof $json.data === 'object' ? JSON.stringify($json.data) : $json.data }}",
+            "results": "={{ typeof $json.results === 'object' ? JSON.stringify($json.results) : $json.results }}",
+            "skipped": "={{ $json.skipped || false }}",
+            "customerPriceILS": "={{ $json.customerPriceILS || $json.customer_price }}",
+            "partName": "={{ $json.partName || $json.part_name }}",
+            "manufacturer": "={{ $json.manufacturer }}",
+            "category": "={{ $json.category }}",
+            "currency": "={{ $json.currency || 'ILS' }}",
+            "breakdown": "={{ typeof $json.breakdown === 'object' ? JSON.stringify($json.breakdown) : $json.breakdown }}",
+            "calculationSummary": "={{ $json.calculationSummary || $json.summary }}",
+            "nextAction": "={{ $json.nextAction || $json.decision || 'CONTINUE' }}",
+            "authorizationRequired": "={{ $json.authorizationRequired || $json.require_admin_review || false }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "headers",
+              "displayName": "headers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "params",
+              "displayName": "params",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "body",
+              "displayName": "body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "webhookUrl",
+              "displayName": "webhookUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "executionMode",
+              "displayName": "executionMode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "quoteId",
+              "displayName": "quoteId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerId",
+              "displayName": "customerId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalPriceILS",
+              "displayName": "totalPriceILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "validUntil",
+              "displayName": "validUntil",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "distributionChannels",
+              "displayName": "distributionChannels",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "toolCallId",
+              "displayName": "toolCallId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pipeline",
+              "displayName": "pipeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStep",
+              "displayName": "currentStep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalSteps",
+              "displayName": "totalSteps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "isDefense",
+              "displayName": "isDefense",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "isUrgent",
+              "displayName": "isUrgent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "orderType",
+              "displayName": "orderType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerApprovedQuote",
+              "displayName": "customerApprovedQuote",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalPriceList",
+              "displayName": "totalPriceList",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "results",
+              "displayName": "results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "skipped",
+              "displayName": "skipped",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceILS",
+              "displayName": "customerPriceILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "partName",
+              "displayName": "partName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "manufacturer",
+              "displayName": "manufacturer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currency",
+              "displayName": "currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "breakdown",
+              "displayName": "breakdown",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "calculationSummary",
+              "displayName": "calculationSummary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nextAction",
+              "displayName": "nextAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "authorizationRequired",
+              "displayName": "authorizationRequired",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        336,
+        288
+      ],
+      "id": "48332f73-8d14-4be0-8fd8-f889b086f045",
+      "name": "Log_Quote_To_Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool ONLY during an RFQ (Request for Quote) flow to email the generated formal price quotation directly to the customer. Requires a fully populated HTML email body containing the Quote ID, Part Number, Quantity, Total Price, and Validity Date.",
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Subject', ``, 'string') }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        -160,
+        320
+      ],
+      "id": "aece1c73-a0d5-4175-82b1-8101e1c8163a",
+      "name": "Send a message in Gmail",
+      "webhookId": "cb675018-af55-4f3f-9907-b1f2ffb813f7",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        80
+      ],
+      "id": "30ed16b6-05d3-4af3-86ad-f8ce6e2f3df1",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to look up a historical quote price from the database. Requires customerId and partNumber.",
+        "documentId": {
+          "__rl": true,
+          "value": "1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo",
+          "mode": "list",
+          "cachedResultName": "Quotes_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1408906582,
+          "mode": "list",
+          "cachedResultName": "Quotes",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo/edit#gid=1408906582"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "customerId",
+              "lookupValue": "={{ $json.customerId }}"
+            },
+            {
+              "lookupColumn": "partNumber",
+              "lookupValue": "={{ $json.partNumber }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        0,
+        320
+      ],
+      "id": "33458454-2e4f-4c72-9854-f9806a71a960",
+      "name": "Lookup_Historical_Quote",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "26d70e20-d9dd-48e2-8d31-4edf3f387228",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "SKIP",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "8d13b74d-87cc-4147-bc80-1ee85550e6f1",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "REJECTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "ccfb6d2a-53c9-4abb-b528-1e593313cdfd",
+              "leftValue": "={{ $json.quantity || ($json.data && $json.data.quantity) || $('When Executed by Another Workflow').item.json.quantity || 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            },
+            {
+              "id": "e4caf2d3-ff1f-4975-878e-5908cdf7f438",
+              "leftValue": "={{ $json.orderType || $json.order_type || ($json.data && $json.data.orderType) || $('When Executed by Another Workflow').item.json.orderType || '' }}",
+              "rightValue": "RFI",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "a69817a3-e40d-43fa-95cf-6bb8b39284cc",
+              "leftValue": "={{ $json.partNumber || $json.part_number || ($json.data && $json.data.partNumber) || $('When Executed by Another Workflow').item.json.partNumber || '' }}",
+              "rightValue": "NON_EXISTENT",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -240,
+        80
+      ],
+      "id": "32a0c9b7-ea6f-41f1-845e-0b30d194413c",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: \"SKIPPED\",\n    decision: \"SKIP\",\n    nextAction: \"ADMIN_REVIEW\",\n    summary: \"CRM Agent skipped execution due to RFI or invalid quantity/part number.\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3544d8d7-41f5-4cb2-8e6d-8f5d4e67005e",
+      "name": "CRM Skip Handler"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c5de4a4b-933b-430c-b29e-cb802baaf84d",
+              "leftValue": "={{ $json.authorizationRequired }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        464,
+        64
+      ],
+      "id": "38b190ce-5ca2-43fe-9296-2eea9a4d9e88",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "s40rZ2yZ6Ez7utPD",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/s40rZ2yZ6Ez7utPD",
+          "cachedResultName": "HITL_Approval_Manager"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        16
+      ],
+      "id": "1460904d-a73b-4bcb-9a33-d8568f679697",
+      "name": "Call 'HITL_Approval_Manager'"
+    },
+    {
+      "parameters": {
+        "jsCode": "// קוד עבור Code in JavaScript1 (הנוד שאחרי If1, לפני ה-HITL)\nlet res = {};\ntry {\n  res = typeof $json.response === 'string' ? JSON.parse($json.response) : ($json.response || $json);\n} catch (e) {\n  res = $json;\n}\n\nconst triggerData = $('When Executed by Another Workflow').first().json;\n\nreturn {\n  sessionId: res.sessionId || triggerData.sessionId || '',\n  quoteId: res.quoteId || triggerData.quoteId || '',\n  customerId: res.customerId || triggerData.customerId || '',\n  customerName: res.customerName || triggerData.customerName || '',\n  partNumber: res.partNumber || triggerData.partNumber || '',\n  quantity: res.quantity || triggerData.quantity || 0,\n  orderType: res.orderType || triggerData.orderType || 'PO',\n  quoteAmountILS: res.quoteAmountILS || triggerData.totalPriceList || 0,\n  reason: res.summary || 'Requires manual approval due to PO review / credit limits'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        0
+      ],
+      "id": "9f0bef61-c5d5-48a7-b882-599278add6a4",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "761d5e0c-caae-40b8-b125-e1213bcfd056",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "APPROVED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1152,
+        48
+      ],
+      "id": "93887c10-dc33-4c95-82b8-8879aa76231d",
+      "name": "If_Approval_Status"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    status: \"APPROVED_BY_ADMIN\",\n    nextAction: \"CONTINUE\",\n    summary: \"הפעולה אושרה בהצלחה על ידי המנהל.\",\n    sessionId: $json.sessionId\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        16
+      ],
+      "id": "efe50b5d-aaa4-4cbe-a92d-da425e60be97",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    status: \"REJECTED_BY_ADMIN\",\n    nextAction: \"STOP\",\n    summary: \"הפעולה נדחתה על ידי המנהל במערכת ה-HITL.\",\n    sessionId: $json.sessionId\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        208
+      ],
+      "id": "98c4e06a-8694-4619-b4e5-91dc0527b8ad",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// CRM Agent - Code in JavaScript4 Fix\n\nconst nodeInput = $json || {};\n\n// 1. שחזור נתוני ה-CRM המקוריים מהנודים הקודמים בתת-הוורקפלו למניעת דריסה ע\"י נוד המייל\nlet crmData = {};\ntry {\n  crmData = $('CRM_Agent').first()?.json?.response || \n            $('Validation Guard - CRM').first()?.json || \n            $('When Executed by Another Workflow').first()?.json || {};\n} catch (e) {\n  crmData = {};\n}\n\n// 2. פענוח בטוח של response במידה וקיים\nlet parsed = {};\nif (typeof crmData === 'string') {\n  try {\n    parsed = JSON.parse(crmData);\n  } catch (e) {\n    parsed = {};\n  }\n} else if (typeof crmData === 'object' && crmData !== null) {\n  parsed = crmData;\n}\n\n// 3. החזרת אובייקט JSON תקין הרמטי למניעת קריסת Sub-Workflow\nreturn [{\n  json: {\n    ...parsed,\n    ...nodeInput,\n    status: parsed.status || nodeInput.status || \"SUCCESS\",\n    nextAction: parsed.nextAction || nodeInput.nextAction || \"CONTINUE\",\n    authorizationRequired: false,\n    orderAccepted: true,\n    summary: parsed.summary || \"CRM status email sent and quote verified successfully.\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        352
+      ],
+      "id": "d52ff25b-8c81-46d8-b6a6-73f2861af5c4",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=עדכון לגבי הזמנה מספר {{ $json.order_id }}",
+        "message": "=שלום {{ $json.customer_name }},<br><br> שמחתו לעדכן שסטטוס ההזמנה שלך עודכן בהצלחה ל-<b>{{ $json.status }}</b>.<br><br> בברכה,<br> צוות האתר",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        848,
+        192
+      ],
+      "id": "a8912438-342a-448b-a10d-48ecdd55890b",
+      "name": "Send_Order_Status_Email",
+      "webhookId": "f6bcca65-10a0-4b7c-8fb8-54d6e983f9af",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=עדכון לגבי הזמנה מספר {{ $json.order_id }}",
+        "message": "=שלום {{ $json.customer_name }},<br><br> שמחתו לעדכן שסטטוס ההזמנה שלך עודכן בהצלחה ל-<b>{{ $json.status }}</b>.<br><br> בברכה,<br> צוות האתר",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        16
+      ],
+      "id": "c86e5bc7-691e-42b9-a1b3-a58f02aa7eae",
+      "name": "Send_Order_Status_Email1",
+      "webhookId": "649ff5f0-affb-4beb-9207-621514762c8b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6a12c5a8-b83d-4196-a000-48534496f89d",
+              "leftValue": "={{ \n  (() => {\n    const res = typeof $json.response === 'string' ? JSON.parse($json.response) : $json;\n    return res.orderType || $json.orderType;\n  })()\n}}",
+              "rightValue": "PO",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        576,
+        304
+      ],
+      "id": "351380f5-972c-4d18-b483-a2065bb923e2",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// 1. טיפול במקרה של דילוג\nif (input.status === 'SKIPPED') {\n  return {\n    json: {\n      ...input,\n      currentState: 'CRM_SKIPPED',\n      response: JSON.stringify({ authorizationRequired: false, status: 'SKIPPED' })\n    }\n  };\n}\n\n// 2. חילוץ הטקסט הגולמי שהחזיר Ollama\nlet rawText = input.output || input.response || input;\nif (typeof rawText === 'object') {\n  rawText = JSON.stringify(rawText);\n}\n\nlet agentData = {};\n\n// 3. חילוץ חכם של JSON באמצעות REGEX\ntry {\n  const jsonMatch = rawText.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    agentData = JSON.parse(jsonMatch[0]);\n  } else {\n    agentData = JSON.parse(rawText);\n  }\n} catch (e) {\n  agentData = {\n    status: \"SUCCESS\",\n    summary: \"Parsed from unstructured Ollama output\"\n  };\n}\n\n// 4. חילוץ נתונים מנודים קודמים\nlet triggerData = {};\ntry {\n  triggerData = $('When Executed by Another Workflow').first().json || {};\n} catch (e) {\n  triggerData = {};\n}\n\nconst orderType = agentData.orderType || triggerData.orderType || input.orderType || 'RFQ';\n\n// 5. לוגיקה דטרמיניסטית לבדיקת HITL\nlet orderAccepted = null;\nif (agentData.orderAccepted !== undefined && agentData.orderAccepted !== null) {\n  orderAccepted = Boolean(agentData.orderAccepted);\n} else if (orderType === 'PO') {\n  orderAccepted = agentData.status === 'SUCCESS';\n}\n\nconst quoteAmount = Number(agentData.quoteAmountILS || agentData.totalPriceILS || 0);\nconst availableCredit = Number(agentData.availableCredit !== undefined ? agentData.availableCredit : 100000);\n\n// בדיקה מתמטית ודטרמיניסטית של התנאים\nconst isCreditExceeded = (orderType === 'PO') && (quoteAmount > availableCredit);\nconst isPriceMismatch = (orderType === 'PO') && (orderAccepted === false);\n\n// אישור HITL נדרש אך ורק אם יש חריגה מתמטית באשראי, אי-התאמת מחיר, או דרישה מפורשת מהסוכן\nconst requiresApproval = (orderType === 'PO') && (\n  agentData.authorizationRequired === true ||\n  isCreditExceeded ||\n  isPriceMismatch\n);\n\nconst finalOrderAccepted = requiresApproval ? false : orderAccepted;\n\nconst finalData = {\n  sessionId: agentData.sessionId || triggerData.sessionId || input.sessionId || '',\n  status: requiresApproval ? 'REJECTED' : 'SUCCESS',\n  quoteId: agentData.quoteId || triggerData.quoteId || '',\n  customerId: agentData.customerId || triggerData.customerId || '',\n  customerName: agentData.customerName || triggerData.customerName || '',\n  partNumber: agentData.partNumber || triggerData.partNumber || '',\n  quantity: agentData.quantity || triggerData.quantity || 0,\n  orderType: orderType,\n  creditStatus: agentData.creditStatus || 'OK',\n  availableCredit: availableCredit,\n  quoteAmountILS: quoteAmount,\n  orderAccepted: finalOrderAccepted,\n  authorizationRequired: requiresApproval,\n  nextAction: requiresApproval ? 'ADMIN_REVIEW' : 'PROCUREMENT',\n  summary: agentData.summary || ''\n};\n\nreturn {\n  json: {\n    ...finalData,\n    currentState: requiresApproval ? 'PENDING_APPROVAL' : 'CRM_PROCESSED',\n    validatedAt: new Date().toISOString(),\n    response: JSON.stringify(finalData)\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        48
+      ],
+      "id": "29086859-79d9-4386-baa4-8b1f25da0105",
+      "name": "Validation Guard - CRM"
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b-cloud",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -352,
+        288
+      ],
+      "id": "12362e8a-9ef8-4378-8771-1616712d73ab",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "cJuJhTz0PqFxzhEB",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "CRM_Agent": {
+      "main": [
+        [
+          {
+            "node": "Validation Guard - CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer_Master_Lookup": {
+      "ai_tool": [
+        [
+          {
+            "node": "CRM_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log_Quote_To_Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "CRM_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message in Gmail": {
+      "ai_tool": [
+        [
+          {
+            "node": "CRM_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup_Historical_Quote": {
+      "ai_tool": [
+        [
+          {
+            "node": "CRM_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "CRM Skip Handler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CRM_Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Skip Handler": {
+      "main": [
+        [
+          {
+            "node": "Validation Guard - CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Call 'HITL_Approval_Manager'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'HITL_Approval_Manager'": {
+      "main": [
+        [
+          {
+            "node": "If_Approval_Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Approval_Status": {
+      "main": [
+        [
+          {
+            "node": "Send_Order_Status_Email1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send_Order_Status_Email": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send_Order_Status_Email1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Send_Order_Status_Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Guard - CRM": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "CRM_Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "70wXsnmVq4KlUDHv",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "0874748f-600b-41a2-9f82-b77fa4942bca",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "A4kgrXhIhEmzzpSg",
+  "tags": []
+}

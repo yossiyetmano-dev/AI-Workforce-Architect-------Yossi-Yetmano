@@ -1,0 +1,155 @@
+{
+  "name": "HITL_Approval_Manager",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "19b57ef0-afef-449f-a225-c4cef7664001",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=[אישור נדרש] - {{ $json.title }}",
+        "message": "=<!-- לחצן אישור -->\n<a href=\"{{ $execution.resumeUrl }}&action=approve&session={{ $json.sessionId }}\" \n   style=\"background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; display: inline-block; border-radius: 5px;\">\n   ✓ אישור פעולה\n</a>\n\n&nbsp;\n\n<!-- לחצן דחייה -->\n<a href=\"{{ $execution.resumeUrl }}&action=reject&session={{ $json.sessionId }}\" \n   style=\"background-color: #f44336; color: white; padding: 10px 20px; text-decoration: none; display: inline-block; border-radius: 5px;\">\n   ✕ דחיית פעולה\n</a>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "32fb9c2e-3a9c-46c1-b802-1e51df967c59",
+      "name": "Send Approval Email",
+      "webhookId": "e4ab7c7f-ad65-4d57-99a3-ad8a36fdaf59",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "620654d7-39fc-418e-a642-2e6da56ef0d2",
+      "name": "Wait",
+      "webhookId": "5b8ea3e5-ef7a-4e06-8a23-567f3845b915"
+    },
+    {
+      "parameters": {
+        "jsCode": "const queryParams = $input.item.json.query || {};\nconst isApproved = queryParams.action === 'approve';\n\nreturn {\n  json: {\n    approved: isApproved,\n    decisionTime: new Date().toISOString(),\n    decidedBy: $input.item.json.headers?.['user-agent'] ? 'Human Approver' : 'Unknown',\n    status: isApproved ? 'APPROVED' : 'REJECTED'\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "22374ee6-5188-4004-a12c-543005862010",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<h3>התגובה נקלטה בהצלחה במערכת. תודה!</h3>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        0
+      ],
+      "id": "d9789c38-08cf-4a67-bed6-da162a99eaed",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Send Approval Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Approval Email": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "83e74547-6e07-4561-ac9c-552ddc12727d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "s40rZ2yZ6Ez7utPD",
+  "tags": []
+}

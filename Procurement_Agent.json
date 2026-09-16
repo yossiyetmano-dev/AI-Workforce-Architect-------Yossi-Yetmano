@@ -1,0 +1,872 @@
+{
+  "name": "Procurement_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -320,
+        80
+      ],
+      "id": "b13f0a99-c36c-4514-a211-4ee261a42277",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Session ID: {{ $json.sessionId || $json.session_id }}\nOrder Type: {{ $json.orderType || 'PO' }}\nPart Number: {{ $json.partNumber }}\nQuantity: {{ $json.quantity || 0 }}\nTotal Price ILS: {{ $json.totalPriceILS || $json.quoteAmountILS || 0 }}\nCustomer ID: {{ $json.customerId }}\n\nInstructions:\n1. Inspect Order Type. If \"RFQ\" or \"RFI\", return SKIP JSON immediately.\n2. If \"Order\" or \"PO\", process purchase order in USD.\n3. Call `inventory_lookup` with partNumber to fetch unitCostUSD. If inventory_lookup returns a unit cost, use it. If not, estimate unitCostUSD = (Total Price ILS / Quantity) / 3.6.\n4. Call `supplier_master_lookup` to resolve supplierId and supplierName.\n5. Calculate totalCostUSD = unitCostUSD * quantity.\n6. Call `po_log_writer` to log the order.\n7. Return ONLY valid JSON matching the specified output format.",
+        "options": {
+          "systemMessage": "You are the Strategic Procurement Buyer for Electro-Tech Representatives Ltd.\n\n## YOUR ONLY JOB\nYou process purchase orders for external suppliers in foreign currency (USD). You MUST inspect the input orderType before executing any actions and evaluate authorization thresholds.\n\n## CRITICAL CHECK (RULE 0 - EXECUTE BEFORE ANYTHING ELSE)\n- Check the input field `orderType`.\n- IF `orderType` is \"RFQ\" or \"RFI\":\n  1. DO NOT call any tools.\n  2. IMMEDIATELY return the SKIP JSON response below and terminate execution.\n\n## YOUR TOOLS (ONLY FOR CONFIRMED ORDERS / PO)\nTool 1: `inventory_lookup` - Gets current stock and supplier unit cost (in USD).\nTool 2: `supplier_master_lookup` - Gets supplier contact details.\nTool 3: `po_log_writer` - Logs generated PO.\n\n## MANDATORY STEPS (FOR CONFIRMED ORDERS / PO ONLY)\nStep 1: Determine Supplier Cost Details (No Markup):\n  - Call `inventory_lookup` with `partNumber`.\n  - Extract `unitCostUSD` from the tool result. If `unitCostUSD` or `unitCost` is empty/missing/0, calculate it as: `unitCostUSD = (totalPriceILS / quantity) / 3.6`.\n  - Calculate `totalCostUSD = unitCostUSD * quantity`.\n\nStep 2: Resolve Supplier Contact Details:\n  - Call `supplier_master_lookup` passing `partNumber` to fetch `supplierId` and `supplierName`. If empty, map `supplierId = \"SUP-001\"` and `supplierName = \"Sanyo Denki\"`.\n\nStep 3: Authorization Threshold Check:\n  - Check if `totalCostUSD` > 30000.\n  - If `totalCostUSD` > 30000 -> set `authorizationRequired` = true and `nextAction` = \"LOGISTICS\".\n  - Otherwise -> set `authorizationRequired` = false and `nextAction` = \"LOGISTICS\".\n\nStep 4: Generate PO ID in format: PO-2026-XXX (e.g., matching the quote number PO-2026-957).\n\nStep 5: Call `po_log_writer` to record the PO in USD.\n\nStep 6: Stop tool calls and return raw JSON.\n\n## OUTPUT FORMAT FOR CONFIRMED ORDER (PO CREATED)\n{\n  \"sessionId\": \"EXACT_INCOMING_SESSION_ID\",\n  \"status\": \"SUCCESS\",\n  \"poId\": \"PO-2026-957\",\n  \"partNumber\": \"9GV3612P3G03P\",\n  \"quantity\": 200,\n  \"currentStock\": 200,\n  \"orderQuantity\": 200,\n  \"supplierId\": \"SUP-001\",\n  \"supplierName\": \"Sanyo Denki\",\n  \"unitCostUSD\": 7.82,\n  \"totalCostUSD\": 1565.41,\n  \"authorizationRequired\": false,\n  \"decision\": \"ORDER_NOW\",\n  \"nextAction\": \"LOGISTICS\",\n  \"summary\": \"PO created and logged in USD.\"\n}\n\n## CRITICAL RULES\n1. IF `orderType` == \"RFQ\" or \"RFI\" -> NEVER CALL TOOLS, IMMEDIATELY RETURN SKIP JSON.\n2. ALWAYS calculate purchase order values in USD currency for external suppliers.\n3. ALWAYS return valid raw JSON only."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        0,
+        128
+      ],
+      "id": "6ac74e0e-189e-403d-8ca1-0defdde225d2",
+      "name": "Procurement_Agent"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Look up supplier details by supplierId. Input: supplierId (string). Returns: supplierName, contactEmail, phone, paymentTerms, leadTimeDays, isDefense, shippingMethod.",
+        "documentId": {
+          "__rl": true,
+          "value": "1EbJwHp22aJnqq9XKb7Of7_2GCSfFz9N8bpGxmCJGXZc",
+          "mode": "list",
+          "cachedResultName": "Supplier_Master"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 934254563,
+          "mode": "list",
+          "cachedResultName": "Suppliers"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "supplierId",
+              "lookupValue": "={{ $json.supplierId }}"
+            }
+          ]
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "detectAutomatically"
+            }
+          },
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "FORMATTED_STRING"
+            }
+          },
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        0,
+        368
+      ],
+      "id": "e4ca3714-c6fa-497a-a3e1-5ea272c3d8a6",
+      "name": "supplier_master_lookup",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Look up current stock levels and reorder information for a part number. Input: partNumber (string). Returns: currentStock, reorderPoint, safetyStock, supplierId, leadTimeDays, unitCost.",
+        "documentId": {
+          "__rl": true,
+          "value": "1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc",
+          "mode": "list",
+          "cachedResultName": "Inventory_Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 213906504,
+          "mode": "list",
+          "cachedResultName": "Stock",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc/edit#gid=213906504"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "partNumber",
+              "lookupValue": "={{ $json.partNumber }}"
+            }
+          ]
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "detectAutomatically"
+            }
+          },
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "FORMATTED_STRING"
+            }
+          },
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        304,
+        272
+      ],
+      "id": "0b1dd932-b8b6-4ca7-90c1-3405872835c3",
+      "name": "inventory_lookup",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc",
+          "mode": "list",
+          "cachedResultName": "Purchase_Orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1497253811,
+          "mode": "list",
+          "cachedResultName": "POs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc/edit#gid=1497253811"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "poId": "={{ $json.poId }}",
+            "sessionId": "={{ $json.sessionId }}",
+            "partNumber": "={{ $json.partNumber }}",
+            "quantity": "={{ $json.orderQuantity }}",
+            "supplierId": "={{ $json.supplierId }}",
+            "unitCost": "={{ $json.unitCost }}",
+            "totalCostILS": "={{ $json.totalCostILS }}",
+            "status": "={{ $json.status }}",
+            "authorizationRequired": "={{ $json.authorizationRequired }}",
+            "createdAt": "={{ $json.createdAt }}",
+            "expectedDelivery": "={{ $json.expectedDelivery }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "poId",
+              "displayName": "poId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "supplierId",
+              "displayName": "supplierId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "unitCost",
+              "displayName": "unitCost",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "totalCostILS",
+              "displayName": "totalCostILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "authorizationRequired",
+              "displayName": "authorizationRequired",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "createdAt",
+              "displayName": "createdAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "expectedDelivery",
+              "displayName": "expectedDelivery",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        144,
+        304
+      ],
+      "id": "16bc5565-f5c9-475a-a7ba-58e191ea9121",
+      "name": "po_log_writer",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d6b9e5f8-6d95-4086-9204-bc48c51dbb5c",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "SKIP",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "291c29b1-cf33-498a-8ff5-4236accf7183",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "REJECTED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "729c29f3-8e34-43d5-8d3f-ca77534b5402",
+              "leftValue": "={{ $json.quantity }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "fe06c688-40c5-44a4-80e3-7cafda64fe17",
+              "leftValue": "={{ ($json.orderType || '').toUpperCase() }}",
+              "rightValue": "RFQ",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "478184c6-9877-4b16-a01d-6db00cfbf464",
+              "leftValue": "={{ ($json.orderType || '').toUpperCase() }}",
+              "rightValue": "RFI",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -144,
+        80
+      ],
+      "id": "1ba20c1b-2a41-4409-83a3-5a5fb273b079",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: \"SKIPPED\",\n    decision: \"SKIP\",\n    nextAction: \"ADMIN_REVIEW\",\n    summary: \"Procurement Agent skipped execution due to invalid quantity or upstream rejection.\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -32
+      ],
+      "id": "69540412-7c5c-4b4a-940c-7e7c4a3cd285",
+      "name": "Skip Handler"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f675bf31-0402-4760-ad9f-5f1b144ef0cc",
+              "leftValue": "={{\n  (() => {\n    try {\n      const res = typeof $json.response === 'string' ? JSON.parse($json.response) : ($json.response || $json);\n      \n      // חילוץ סכום ההזמנה והספק\n      const totalAmount = Number(res.totalAmount || res.total_amount || res.totalPrice || 0);\n      const requiresAuth = res.authorizationRequired === true || res.nextAction === \"ADMIN_REVIEW\";\n      \n      // בדיקה דטרמיניסטית: האם הסכום עולה על 30,000$\n      const amountExceeded = totalAmount > 30000;\n      \n      return Boolean(requiresAuth || amountExceeded);\n    } catch(e) {\n      return false;\n    }\n  })()\n}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        80
+      ],
+      "id": "dccde412-a55c-4859-abdf-7725da6dc48f",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "jsCode": "let parsed = {};\n\n// פענוח בטוח של תשובת סוכן הרכש\nif (typeof $json.response === 'string') {\n  try {\n    parsed = JSON.parse($json.response);\n  } catch (e) {\n    parsed = {};\n  }\n} else if (typeof $json.response === 'object' && $json.response !== null) {\n  parsed = $json.response;\n} else {\n  parsed = $json;\n}\n\nreturn {\n  json: {\n    sessionId: parsed.sessionId || $json.sessionId || \"SESS-UNKNOWN\",\n    sourceAgent: \"Procurement_Agent\",\n    approvalType: \"HIGH_VALUE_PO\",\n    title: `אישור רכש חורג: ${parsed.partNumber || $json.partNumber || ''}`,\n    summary: parsed.summary || `נדרש אישור להזמנת רכש חורגת בסך $${parsed.totalCostUSD || 0}.`,\n    approverEmail: \"ceo@company.com\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        -16
+      ],
+      "id": "93999d56-15e1-4989-8482-4c51bd0911d4",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "s40rZ2yZ6Ez7utPD",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/s40rZ2yZ6Ez7utPD",
+          "cachedResultName": "HITL_Approval_Manager"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        768,
+        -16
+      ],
+      "id": "da5261d1-f2bf-4f04-8f5a-4736f71aa6ee",
+      "name": "Call 'HITL_Approval_Manager'"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "db2f0b63-03c7-4670-b6d7-41bcccd14fca",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "APPROVED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        928,
+        -16
+      ],
+      "id": "3bed2166-ca26-42e0-9d19-02559536a4f1",
+      "name": "If_Approval_Status"
+    },
+    {
+      "parameters": {
+        "jsCode": "// קוד מתוקן עבור Code in JavaScript2 ב-Procurement Agent\nconst triggerData = $('When Executed by Another Workflow').first().json || {};\nconst prevData = $json || {};\n\nreturn {\n  json: {\n    status: \"SUCCESS\",\n    authorizationRequired: true,\n    decision: \"PO_APPROVED_BY_ADMIN\",\n    nextAction: \"CONTINUE\",\n    summary: \"בקשת הרכש אושרה בהצלחה על ידי המנהל במערכת ה-HITL.\",\n    \n    // העברת הפרמטרים הקריטיים שסוכן הלוגיסטיקה מחפש:\n    orderType: triggerData.orderType || prevData.orderType || \"PO\",\n    poId: triggerData.poId || triggerData.quoteId || prevData.poId || \"\",\n    partNumber: triggerData.partNumber || prevData.partNumber || \"\",\n    quantity: triggerData.quantity || prevData.quantity || 0,\n    sessionId: prevData.sessionId || triggerData.sessionId || \"SESS-UNKNOWN\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        -16
+      ],
+      "id": "21a376e5-d0e4-4505-9e9c-8c3f99055b82",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    status: \"REJECTED\",\n    authorizationRequired: true,\n    decision: \"PO_REJECTED_BY_ADMIN\",\n    nextAction: \"STOP\",\n    summary: \"בקשת הרכש נדחתה על ידי המנהל במערכת ה-HITL. לא יופק PO לספק.\",\n    sessionId: $json.sessionId || \"SESS-UNKNOWN\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        224
+      ],
+      "id": "2c35b501-d136-4471-996b-79e17eb58f77",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code in JavaScript4 inside Procurement_Agent\n\nconst inputData = $json;\n\n// שחזור אובייקט הרכש מנוד Procurement_Agent הקודם\nlet agentData = {};\ntry {\n  const rawAgent = $('Procurement_Agent').first()?.json?.response || {};\n  if (typeof rawAgent === 'string') {\n    agentData = JSON.parse(rawAgent);\n  } else {\n    agentData = rawAgent;\n  }\n} catch (e) {\n  agentData = {};\n}\n\nreturn {\n  json: {\n    sessionId: agentData.sessionId || inputData.sessionId || \"SESS-UNKNOWN\",\n    status: \"SUCCESS\",\n    poId: agentData.poId || agentData.purchaseOrderId || \"PO-2026-ACTIVE\",\n    partNumber: agentData.partNumber || inputData.partNumber,\n    quantity: agentData.quantity || inputData.quantity,\n    unitCostUSD: agentData.unitCostUSD || 0,\n    totalCostUSD: agentData.totalCostUSD || 0,\n    nextAction: \"LOGISTICS\",\n    authorizationRequired: false,\n    decision: \"ORDER_NOW\",\n    summary: agentData.summary || \"PO created and sent to supplier.\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        336
+      ],
+      "id": "9329b4ad-672a-4b78-9885-8179aaf3816d",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=PO Notification: {{ $json.poId || $json.poid || $('When Executed by Another Workflow').first().json.poId || 'PO-2026' }}",
+        "message": "=<p>Dear Supplier,</p>\n\n<p>Please see our official Purchase Order details below:</p>\n\n<table style=\"border-collapse: collapse; width: 100%; max-width: 500px; font-family: Arial, sans-serif; margin: 15px 0;\">\n  <thead>\n    <tr style=\"background-color: #f2f2f2;\">\n      <th style=\"border: 1px solid #dddddd; text-align: left; padding: 8px;\">Parameter</th>\n      <th style=\"border: 1px solid #dddddd; text-align: left; padding: 8px;\">Value</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Purchase Order ID</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">{{ $('When Executed by Another Workflow').first().json.poId || $json.poId || $json.poid }}</td>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Part Number</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">{{ $('When Executed by Another Workflow').first().json.partNumber || $json.partNumber }}</td>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Quantity</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">{{ $('When Executed by Another Workflow').first().json.quantity || $json.quantity }} units</td>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Unit Price (USD)</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">${{ ( (Number($json.unitCostUSD || (typeof $json.output === 'string' && $json.output.includes('unitCostUSD') ? JSON.parse($json.output).unitCostUSD : 0)) || (Number($('When Executed by Another Workflow').first().json.totalPriceILS || 0) / Number($('When Executed by Another Workflow').first().json.quantity || 1) / 3.6)) ).toFixed(2) }}</td>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Total Amount (USD)</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">${{ ( (Number($json.totalCostUSD || (typeof $json.output === 'string' && $json.output.includes('totalCostUSD') ? JSON.parse($json.output).totalCostUSD : 0)) || (Number($('When Executed by Another Workflow').first().json.totalPriceILS || 0) / 3.6)) ).toFixed(2) }}</td>\n    </tr>\n  </tbody>\n</table>\n\n<p>Please confirm receipt of this order and provide the estimated shipping date.</p>\n\n<p>Best regards,<br>\n<strong>Procurement Department</strong><br>\nElectro-Tech Representatives Ltd.</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        768,
+        176
+      ],
+      "id": "c0c8ba3d-b59f-4034-a131-18f039a045b4",
+      "name": "send_supplier_po_email1",
+      "webhookId": "d5fbd28b-f5f6-4600-aac5-2aca35ee4c40",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=PO Notification: {{ $json.poId || $json.poid || $('When Executed by Another Workflow').first().json.poId || 'PO-2026' }}",
+        "message": "=<p>Dear Supplier,</p>\n\n<p>Please see our official Purchase Order details below:</p>\n\n<table style=\"border-collapse: collapse; width: 100%; max-width: 500px; font-family: Arial, sans-serif; margin: 15px 0;\">\n  <thead>\n    <tr style=\"background-color: #f2f2f2;\">\n      <th style=\"border: 1px solid #dddddd; text-align: left; padding: 8px;\">Parameter</th>\n      <th style=\"border: 1px solid #dddddd; text-align: left; padding: 8px;\">Value</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Purchase Order ID</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">{{ $('When Executed by Another Workflow').first().json.poId || $json.poId || $json.poid }}</td>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Part Number</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">{{ $('When Executed by Another Workflow').first().json.partNumber || $json.partNumber }}</td>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Quantity</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">{{ $('When Executed by Another Workflow').first().json.quantity || $json.quantity }} units</td>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Unit Price (USD)</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">${{ ( (Number($json.unitCostUSD || (typeof $json.output === 'string' && $json.output.includes('unitCostUSD') ? JSON.parse($json.output).unitCostUSD : 0)) || (Number($('When Executed by Another Workflow').first().json.totalPriceILS || 0) / Number($('When Executed by Another Workflow').first().json.quantity || 1) / 3.6)) ).toFixed(2) }}</td>\n    </tr>\n    <tr>\n      <td style=\"border: 1px solid #dddddd; padding: 8px; font-weight: bold;\">Total Amount (USD)</td>\n      <td style=\"border: 1px solid #dddddd; padding: 8px;\">${{ ( (Number($json.totalCostUSD || (typeof $json.output === 'string' && $json.output.includes('totalCostUSD') ? JSON.parse($json.output).totalCostUSD : 0)) || (Number($('When Executed by Another Workflow').first().json.totalPriceILS || 0) / 3.6)) ).toFixed(2) }}</td>\n    </tr>\n  </tbody>\n</table>\n\n<p>Please confirm receipt of this order and provide the estimated shipping date.</p>\n\n<p>Best regards,<br>\n<strong>Procurement Department</strong><br>\nElectro-Tech Representatives Ltd.</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        -16
+      ],
+      "id": "c1e4dba0-a783-4811-98ff-edcaf1e06e27",
+      "name": "send_supplier_po_email2",
+      "webhookId": "6d20d8af-daa7-4830-a59c-7385a0711a24",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8b51babb-a8a1-4acd-be25-c646cec67faa",
+              "leftValue": "={{ \n  (() => {\n    const res = typeof $json.response === 'string' ? JSON.parse($json.response) : $json;\n    return res.decision || $json.decision;\n  })()\n}}",
+              "rightValue": "ORDER_NOW",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        512,
+        272
+      ],
+      "id": "64640eb4-69f4-41b6-b9bd-638a95ebee6c",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $json;\nconst triggerData = $('When Executed by Another Workflow').first()?.json || {};\n\n// 1. הגנה לתרחישי SKIP\nif (\n  inputData.decision === 'SKIP' || \n  inputData.status === 'SKIPPED' || \n  inputData.orderType === 'RFQ' || \n  inputData.orderType === 'RFI'\n) {\n  return [{\n    json: {\n      ...inputData,\n      status: 'SKIPPED',\n      decision: 'SKIP',\n      nextAction: 'LOGISTICS_SKIP'\n    }\n  }];\n}\n\n// 2. חילוץ ה-JSON שהגיע מסוכן ה-LLM\nlet parsedData = {};\nlet responseText = inputData.output || inputData.response || \"\";\n\ntry {\n  if (typeof responseText === 'string' && responseText.includes('{')) {\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      parsedData = JSON.parse(jsonMatch[0]);\n    }\n  } else if (typeof responseText === 'object' && responseText !== null) {\n    parsedData = responseText;\n  }\n} catch (e) {}\n\n// 3. חילוץ כמות וסכומים\nconst qty = Number(inputData.quantity || parsedData.quantity || triggerData.quantity || 0);\nconst totalPriceILS = Number(triggerData.totalPriceILS || triggerData.totalPriceList || inputData.totalPriceILS || 0);\n\n// חישוב מחיר יחידה בדולר\nlet unitUSD = Number(inputData.unitCostUSD || parsedData.unitCostUSD || 0);\nif (unitUSD === 0 && qty > 0 && totalPriceILS > 0) {\n  unitUSD = Number((totalPriceILS / qty / 3.6).toFixed(2));\n}\n\n// חישוב סך הכל דולרי בטוח\nlet totalCostUSD = Number(inputData.totalCostUSD || parsedData.totalCostUSD || 0);\nif (totalCostUSD === 0) {\n  if (totalPriceILS > 0) {\n    totalCostUSD = Number((totalPriceILS / 3.6).toFixed(2));\n  } else if (qty > 0 && unitUSD > 0) {\n    totalCostUSD = Number((qty * unitUSD).toFixed(2));\n  }\n}\n\n// 4. אכיפת חוק ה-HITL (סף $30,000 או 108,000 ₪)\nconst requiresAuth = totalCostUSD > 30000 || totalPriceILS > 108000;\nconst finalDecision = requiresAuth ? 'REQUIRE_APPROVAL' : 'ORDER_NOW';\n\n// 5. החזרת פלט דטרמיניסטי מתוקן\nreturn [{\n  json: {\n    ...triggerData,\n    ...inputData,\n    ...parsedData,\n    quantity: qty,\n    unitCostUSD: unitUSD,\n    totalCostUSD: totalCostUSD,\n    authorizationRequired: requiresAuth,\n    decision: finalDecision,\n    status: 'PROCESSED_BY_PROCUREMENT'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        -16
+      ],
+      "id": "335aace5-6e46-4da2-bdd9-4893305d9ed1",
+      "name": "Validation Guard - Procurement"
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b-cloud",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        336
+      ],
+      "id": "afea8d0e-2d2c-4af0-9194-d0660ffd7979",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "cJuJhTz0PqFxzhEB",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procurement_Agent": {
+      "main": [
+        [
+          {
+            "node": "Validation Guard - Procurement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "supplier_master_lookup": {
+      "ai_tool": [
+        [
+          {
+            "node": "Procurement_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "inventory_lookup": {
+      "ai_tool": [
+        [
+          {
+            "node": "Procurement_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "po_log_writer": {
+      "ai_tool": [
+        [
+          {
+            "node": "Procurement_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Skip Handler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Procurement_Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Handler": {
+      "main": [
+        [
+          {
+            "node": "Validation Guard - Procurement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Call 'HITL_Approval_Manager'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'HITL_Approval_Manager'": {
+      "main": [
+        [
+          {
+            "node": "If_Approval_Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Approval_Status": {
+      "main": [
+        [
+          {
+            "node": "send_supplier_po_email2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_supplier_po_email1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send_supplier_po_email2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "send_supplier_po_email1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Guard - Procurement": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Procurement_Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "70wXsnmVq4KlUDHv",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "e9841392-a895-4c15-9acf-d50cb977f236",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "r8FJS8SkFQBdyc9T",
+  "tags": []
+}

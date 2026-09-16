@@ -1,0 +1,402 @@
+{
+  "name": "Technical_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -384,
+        192
+      ],
+      "id": "65056708-a250-4342-90b3-dfb3a4d6849a",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Session ID: {{ $json.sessionId }}\nPart Number: {{ $json.partNumber }}\nQuantity: {{ $json.quantity }}\nIs Defense: {{ $json.isDefense }}\nSkipped: {{ $json.skipped }}\nQuery / Requirements: {{ $json.query || $json.technicalSummary || \"Validate part number or search vector store if part number is missing\" }}\n\nCheck component validity in inventory_master_lookup (pricelist_lookup). If component missing or if request is a technical lookup, query technical datasheets in vector store. Return ONLY valid JSON.",
+        "options": {
+          "systemMessage": "You are the Lead Technical Validation Engineer for Electro-Tech Representatives Ltd.\n\n## YOUR RESPONSIBILITIES\n1. If a `partNumber` is provided in the input, validate whether it exists in the catalog using `pricelist_lookup`.\n2. If `partNumber` is empty/null, or if the request requires component selection, spec lookup, datasheet analysis, or finding optimal parts (e.g., lowest noise, lowest power, specific dimensions), search the technical datasheets using the `Answer questions with a vector store` tool.\n\n## YOUR TOOLS\nTool 1: `pricelist_lookup`\n- What it does: Searches for a part number in Google Sheets catalog.\n- How to use it: Call with `{ \"partNumber\": \"<part_number>\" }`.\n\nTool 2: `Answer questions with a vector store` (Pinecone Vector Store)\n- What it does: Searches component datasheets and technical documentation in the Google Drive repository.\n- How to use it: Query with natural language search terms describing the required technical specifications, specs, or parameters (e.g., \"fan low noise dBA power consumption datasheet\", \"microcontroller pinout\", etc.).\n\n## MANDATORY LOGIC - FOLLOW EXACTLY\n\n### CASE A: SPECIFIC PART NUMBER PROVIDED\n1. Call `pricelist_lookup` with `partNumber`.\n2. If found in catalog: Status = \"APPROVED\", nextAction = \"PRICING\".\n3. If NOT found in catalog: You may query `Answer questions with a vector store` to check if datasheet exists or find alternatives, then return Status = \"REJECTED\" with technical summary.\n\n### CASE B: TECHNICAL LOOKUP / RAG SELECTION (No specific Part Number OR Technical Query)\n1. Call `Answer questions with a vector store` with relevant technical keywords based on the user's requirements.\n2. Analyze all returned document chunks/datasheets to extract specs, values, and candidate part numbers.\n3. If looking for optimal components (e.g., lowest noise, lowest power), compare parameters across fetched datasheets and select the best match.\n4. Set Status = \"APPROVED\" if a valid component was selected from datasheets, or \"SELECTION_REQUIRED\" / \"INFO_PROVIDED\". Set nextAction = \"PRICING\" or \"REVIEW\".\n\n## WHAT YOU WILL RECEIVE\n- sessionId: Unique identifier\n- partNumber: The part to look up (if provided)\n- quantity: Quantity requested\n- customerId: Customer identifier\n- isDefense: True if defense customer\n- isUrgent: True if urgent order\n- orderType: \"RFQ\" or \"PO\"\n- application: defense, medical, industrial, or standard\n- query / request: Additional technical requirements or query (if provided)\n\n## OUTPUT FORMAT (ALWAYS RETURN VALID JSON ONLY)\n\n### When Part is Approved / Found via Catalog or Datasheet:\n{\n  \"sessionId\": \"{{ $json.sessionId }}\",\n  \"status\": \"APPROVED\",\n  \"partNumber\": \"<Found or Selected Part Number>\",\n  \"partName\": \"<Part Name or Description>\",\n  \"manufacturer\": \"<Manufacturer Name>\",\n  \"category\": \"<Category>\",\n  \"isDefense\": {{ $json.isDefense }},\n  \"highReliabilityClearance\": {{ $json.isDefense }},\n  \"missingFields\": [],\n  \"nextAction\": \"PRICING\",\n  \"technicalSummary\": \"<Summary of findings or technical specs extracted from datasheet/catalog>\"\n}\n\n### When Part is Rejected / Not Found:\n{\n  \"sessionId\": \"{{ $json.sessionId }}\",\n  \"status\": \"REJECTED\",\n  \"partNumber\": \"{{ $json.partNumber }}\",\n  \"partName\": null,\n  \"manufacturer\": null,\n  \"category\": null,\n  \"isDefense\": {{ $json.isDefense }},\n  \"highReliabilityClearance\": false,\n  \"missingFields\": [\"Part not found in catalog or datasheets\"],\n  \"nextAction\": \"REJECT\",\n  \"technicalSummary\": \"ERROR: Part {{ $json.partNumber }} not found in catalog or technical datasheets.\"\n}\n\n## CRITICAL RULES - DO NOT BREAK THESE\n1. ALWAYS use the appropriate tool before making a decision (`pricelist_lookup` for catalog checks, `Answer questions with a vector store` for datasheet queries).\n2. NEVER guess parameters or datasheets - ALWAYS pull from tools.\n3. NEVER return conversational text, explanations, or markdown. Return ONLY valid raw JSON."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        256,
+        176
+      ],
+      "id": "5812e4d4-a3b9-493d-8e41-a3f312f4bca6",
+      "name": "Technical_Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "return { json: { response: $input.item.json.output } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        128
+      ],
+      "id": "084fe015-7d6c-4d45-b204-70c602736bae",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Look up a part number in the master parts catalog. Input: partNumber (string). Returns: part details including unitPrice, description, manufacturer, and stock.",
+        "documentId": {
+          "__rl": true,
+          "value": "1Pw0xxKeBU9XfSNqCtSzFUXd10BofGOaJPYKB69D7gUg",
+          "mode": "list",
+          "cachedResultName": "Pricelist_Master_Clean",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Pw0xxKeBU9XfSNqCtSzFUXd10BofGOaJPYKB69D7gUg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 940394655,
+          "mode": "list",
+          "cachedResultName": "Cooling_Fans",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Pw0xxKeBU9XfSNqCtSzFUXd10BofGOaJPYKB69D7gUg/edit#gid=940394655"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "partNumber",
+              "lookupValue": "={{ $json.data.partNumber }}"
+            }
+          ]
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "detectAutomatically"
+            }
+          },
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "FORMATTED_STRING"
+            }
+          },
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        352,
+        384
+      ],
+      "id": "e07b607d-fb2d-4419-98f5-4ff7109c0486",
+      "name": "pricelist_lookup",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Technical datasheets, component specifications, and product manuals for electronic components and cooling fans. Use this tool to search for specific part numbers, technical parameters (such as noise level in dBA, power consumption in Watts, airflow in CFM), or to select optimal components based on technical requirements."
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        304
+      ],
+      "id": "d98d5f2d-ba14-441f-9dc0-7caf7079604b",
+      "name": "Answer questions with a vector store"
+    },
+    {
+      "parameters": {
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "final-project",
+          "mode": "list",
+          "cachedResultName": "final-project"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        592,
+        336
+      ],
+      "id": "b2a11851-e816-488a-b37c-896cf257a5a2",
+      "name": "Pinecone Vector Store",
+      "credentials": {
+        "pineconeApi": {
+          "id": "k7H4g3dxvGEQf0fd",
+          "name": "Pinecone account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "dimensions": 512
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        528,
+        432
+      ],
+      "id": "44676586-2c35-4d65-a371-1f8a6a593e19",
+      "name": "Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "RzbQ3Ee1HKbKbR1G",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        448
+      ],
+      "id": "9dbe8db5-17e7-4ccd-89ae-969ac7b2f95d",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "RzbQ3Ee1HKbKbR1G",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b9cb2dbf-478b-4921-8899-9535124a8b46",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "SKIP",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "50c159dc-e078-4402-92ed-e44277009a55",
+              "leftValue": "={{ $json.orderType }}",
+              "rightValue": "PO",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -176,
+        192
+      ],
+      "id": "770f8687-27f1-46d5-afcf-3481444cdc1b",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: \"SKIPPED\",\n    decision: \"SKIP\",\n    nextAction: \"ADMIN_REVIEW\",\n    summary: \"Technical Agent skipped execution due to PO.\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5da2ebc0-00eb-491f-bd8f-7d700a1f7b9c",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b-cloud",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        128,
+        384
+      ],
+      "id": "027c0638-badc-44a8-895b-0cd30903a661",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "cJuJhTz0PqFxzhEB",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Technical_Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "pricelist_lookup": {
+      "ai_tool": [
+        [
+          {
+            "node": "Technical_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer questions with a vector store": {
+      "ai_tool": [
+        [
+          {
+            "node": "Technical_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Answer questions with a vector store",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Answer questions with a vector store",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Technical_Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Technical_Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "70wXsnmVq4KlUDHv",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "1d5cff64-ce2e-412c-b537-e879d22951cc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "3F3tWAxWNBfGCR9P",
+  "tags": []
+}

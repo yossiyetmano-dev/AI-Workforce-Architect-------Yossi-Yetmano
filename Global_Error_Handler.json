@@ -1,0 +1,266 @@
+{
+  "name": "Global_Error_Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1876b1b0-6fc8-4b3c-8ad1-177e2d040d6d",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const errorData = $input.item.json;\n\n// חילוץ פרטי הריצה והשגיאה שנלכדו\nconst executionId = errorData.execution?.id || \"N/A\";\nconst workflowName = errorData.workflow?.name || \"Unknown Workflow\";\nconst workflowId = errorData.workflow?.id || \"N/A\";\nconst failedNodeName = errorData.node?.name || \"Unknown Node\";\nconst errorMessage = errorData.error?.message || \"No error message provided\";\n\n// ניסיון חילוץ Session ID מנתוני הריצה שכשלה\nlet sessionId = \"UNKNOWN_SESSION\";\ntry {\n  if (errorData.execution?.data?.resultData?.runData) {\n    const runData = errorData.execution.data.resultData.runData;\n    const firstNodeKey = Object.keys(runData)[0];\n    if (firstNodeKey && runData[firstNodeKey][0]?.data?.main[0][0]?.json) {\n      const rootJson = runData[firstNodeKey][0].data.main[0][0].json;\n      sessionId = rootJson.sessionId || rootJson.data?.sessionId || sessionId;\n    }\n  }\n} catch (e) {\n  console.log(\"Could not extract sessionId from error payload\");\n}\n\nreturn [{\n  json: {\n    sessionId: sessionId,\n    executionId: executionId,\n    workflowName: workflowName,\n    workflowId: workflowId,\n    failedNodeName: failedNodeName,\n    errorMessage: errorMessage,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "e6e80a8a-4268-4f3b-8913-970fa8e77de2",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1voswgtKV-I_a9XahiE31qVd6wj6Jw7DP8d74yHMZgTU",
+          "mode": "list",
+          "cachedResultName": "Admin_Audit_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1voswgtKV-I_a9XahiE31qVd6wj6Jw7DP8d74yHMZgTU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1769804289,
+          "mode": "list",
+          "cachedResultName": "\tAudit",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1voswgtKV-I_a9XahiE31qVd6wj6Jw7DP8d74yHMZgTU/edit#gid=1769804289"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "sessionId": "={{ $json.sessionId }}",
+            "auditId": "={{ \"ERR-\" + Date.now() }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "targetRecord": "={{ $json.targetRecord || $json.failedNodeName || 'N/A' }}",
+            "actionType": "={{ $json.actionType || 'CRITICAL_ERROR' }}",
+            "changesApplied": "={{ $json.changesApplied || 0 }}",
+            "authorizationRequired": "={{ $json.authorizationRequired || false }}",
+            "authorizationStatus": "={{ $json.authorizationStatus || 'N/A' }}",
+            "performedBy": "={{ $json.performedBy || 'System_Error_Handler' }}",
+            "status": "FAILED",
+            "details": "={{ \"Workflow: \" + $json.workflowName + \" | Node: \" + $json.failedNodeName + \" | Error: \" + $json.errorMessage }}",
+            "createdAt": "={{ $json.createdAt || $json.timestamp }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "auditId",
+              "displayName": "auditId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "actionType",
+              "displayName": "actionType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "targetRecord",
+              "displayName": "targetRecord",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "changesApplied",
+              "displayName": "changesApplied",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "authorizationRequired",
+              "displayName": "authorizationRequired",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "authorizationStatus",
+              "displayName": "authorizationStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "performedBy",
+              "displayName": "performedBy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "createdAt",
+              "displayName": "createdAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "2e3e0710-7956-43ac-9635-305f2c006a34",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=🚨 קריסת מערכת: שגיאה בקריאת Workflow {{ $json.workflowName }}",
+        "message": "=<h3>🚨 התרעת קריסה במערכת המולטי-אייג'נט</h3>\n<p>אירעה שגיאה קריטית בעת הרצת תהליך ה-Supply Chain:</p>\n<ul>\n  <li><strong>Session ID:</strong> {{ $json.sessionId }}</li>\n  <li><strong>Workflow:</strong> {{ $json.workflowName }} (ID: {{ $json.workflowId }})</li>\n  <li><strong>Node נכשל:</strong> {{ $json.failedNodeName }}</li>\n  <li><strong>Execution ID:</strong> {{ $json.executionId }}</li>\n  <li><strong>פירוט השגיאה:</strong> <span style=\"color: red;\">{{ $json.errorMessage }}</span></li>\n</ul>\n<hr>\n<p style=\"font-size: 11px; color: #777;\">הודעה זו נשלחה אוטומטית על ידי מנגנון ה-Error Handling הראשי ב-n8n.</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "ec82742f-7f9d-4393-ab8b-cede54a23caa",
+      "name": "admin_notify_ceo",
+      "webhookId": "a5365704-6eb3-4549-b411-14ed7a863832",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "admin_notify_ceo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "93978d89-423a-4f15-9e34-16436fa898d0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "70wXsnmVq4KlUDHv",
+  "tags": []
+}

@@ -1,0 +1,1952 @@
+{
+  "name": "Admin_Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Session ID: {{ $json.sessionId }}\nAction Type: {{ $json.actionType }}\nTarget Record: {{ $json.partNumber }}\nPart Number: {{ $json.partNumber }}\nCustomer ID: {{ $json.customerId }}\nStatus: {{ $json.status }}\nIs Defense: {{ $json.isDefense }}\n\nPlease process the administrative action. If authorization is required, escalate to CEO. Log all changes. Return ONLY valid JSON.",
+        "options": {
+          "systemMessage": "You are the Data Governance System Administrator for Electro-Tech Representatives Ltd.\n\n## Your Role\nControl modifications to foundational databases, pricing charts, master system files, and enforce transactional logging across the supply chain. You are an execution agent - receive tasks, execute precisely, and return structured results. Never ask questions or add conversational filler.\n\n## Your Required Tools\n1. `admin_inventory_update` - Google Sheets tool for updating or appending part catalog data.\n2. `admin_customer_update` - Google Sheets tool for updating or verifying customer master records.\n3. `admin_supplier_update` - Google Sheets tool for updating supplier master records.\n4. `admin_audit_log` - Google Sheets tool for logging administrative changes and storing historical RFQ quotes / PO orders.\n5. `admin_notify_ceo` - Gmail service for notifying the CEO when high-level authorization is required.\n\n## Admin Processing Rules (Follow In Order)\n\n### Step 0: Request Classification & RFQ Branching\n- Check the incoming orderType and decision parameters.\n- IF orderType is 'RFQ' OR decision is 'SKIP':\n  1. Call ONLY the `admin_audit_log` tool to permanently log the final RFQ quote transaction. Ensure you pass the sessionId, customerId, partNumber, quantity, and totalPriceILS to the tool so the data is safely secured for future CRM validation.\n  2. DO NOT call any other tool (Do NOT execute admin_customer_update, admin_inventory_update, admin_supplier_update, or admin_notify_ceo).\n  3. Immediately stop execution and return the Response Format for RFQ / SKIP Bypass.\n- ELSE (If orderType is 'Order', 'CUSTOMER_ORDER', or 'PO'): Proceed to Step 1.\n\n### Step 1: Identify Action Type (Active Order/PO flows only)\nAnalyze the incoming data to identify the primary administrative action required:\n- **PRICE_LIST_UPDATE** -> Update inventory master pricing.\n- **CUSTOMER_UPDATE** -> Update customer master records.\n- **SUPPLIER_UPDATE** -> Update supplier master records.\n- **NEW_PART_NPI** -> Add a brand new part introduction to the catalog.\n- **ERROR_ESCALATION** -> Handle critical errors passed from other agents.\n- **LOG_TRANSACTION** -> Standard pipeline completion. Log the final output of the transaction.\n\n### Step 2: Check Authorization (Active Order/PO flows only)\n- Price List Updates & New Part NPI -> Requires CEO approval. If total cost is greater than 100,000 and explicit approval is missing, call `admin_notify_ceo`.\n- Customer & Supplier Updates -> Pre-approved for admin logging.\n- Transaction Logging (PO) -> Pre-approved, does not require manual approval.\n\n### Step 3: Execute Update and Log Changes (Active Order/PO flows only)\n- Execute the corresponding database update tool (such as admin_customer_update or admin_inventory_update) based on the Action Type identified in Step 1.\n- Call `admin_audit_log` to permanently save the completed PO transaction records as historical reference metadata.\n\n## Input Data Mappings\nUse these exact incoming values to fill the placeholders in the output format:\n- sessionId: From input data\n- partNumber: From input data\n- customerId: From input data\n- orderType: From input data\n\n## Output Format (STRICT JSON)\nYou must always respond with a single, valid JSON object matching the appropriate structure below. Do not wrap it in markdown code blocks, and return only the raw JSON.\n\n### Response Format for RFQ / SKIP Bypass (Step 0 Triggered):\n{\n  \"sessionId\": \"Use exact sessionId from input\",\n  \"status\": \"SUCCESS\",\n  \"actionType\": \"LOG_TRANSACTION\",\n  \"targetRecord\": \"Use exact partNumber from input\",\n  \"authorizationRequired\": false,\n  \"authorizationStatus\": \"APPROVED\",\n  \"changesApplied\": 1,\n  \"nextAction\": \"COMPLETE\",\n  \"summary\": \"Admin transaction logged successfully. Historical RFQ quote data captured for CRM validation.\"\n}\n\n### Response Format for Active Order/PO Success:\n{\n  \"sessionId\": \"Use exact sessionId from input\",\n  \"status\": \"SUCCESS\",\n  \"actionType\": \"Insert calculated actionType from Step 1\",\n  \"targetRecord\": \"Use exact partNumber or customerId from input\",\n  \"authorizationRequired\": \"Insert true or false based on Step 2 evaluation\",\n  \"authorizationStatus\": \"APPROVED\",\n  \"changesApplied\": 1,\n  \"nextAction\": \"COMPLETE\",\n  \"summary\": \"Admin pipeline operation completed successfully. Database state and audit logs updated.\"\n}\n\n## Critical Rules\n1. If orderType is 'RFQ' or decision is 'SKIP', you must only call the admin_audit_log tool once and immediately return the bypass JSON response.\n2. Return only raw, valid JSON. Do not include any conversational text, explanations, or markdown code block formatting."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        320,
+        0
+      ],
+      "id": "c87d0a4d-3f9e-4756-8966-93eae3c664be",
+      "name": "Admin_Agent"
+    },
+    {
+      "parameters": {
+        "jsCode": "return { json: { response: $input.item.json.output } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        0
+      ],
+      "id": "c1453156-92f4-4d81-8902-f862aaf94d5c",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc",
+          "mode": "list",
+          "cachedResultName": "Inventory_Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 213906504,
+          "mode": "list",
+          "cachedResultName": "Stock",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc/edit#gid=213906504"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStock",
+              "displayName": "currentStock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reorderPoint",
+              "displayName": "reorderPoint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "safetyStock",
+              "displayName": "safetyStock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierId",
+              "displayName": "supplierId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "leadTimeDays",
+              "displayName": "leadTimeDays",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "unitCost",
+              "displayName": "unitCost",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "warehouseLocation",
+              "displayName": "warehouseLocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "lastUpdated",
+              "displayName": "lastUpdated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pipeline",
+              "displayName": "pipeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStep",
+              "displayName": "currentStep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalSteps",
+              "displayName": "totalSteps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "poId",
+              "displayName": "poId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoteId",
+              "displayName": "quoteId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceId",
+              "displayName": "invoiceId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerId",
+              "displayName": "customerId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalAmountILS",
+              "displayName": "totalAmountILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceSent",
+              "displayName": "invoiceSent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nextAction",
+              "displayName": "nextAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "results",
+              "displayName": "results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "toolCallId",
+              "displayName": "toolCallId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "update",
+              "displayName": "update",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "response",
+              "displayName": "response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "finalSummary",
+              "displayName": "finalSummary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceILS",
+              "displayName": "customerPriceILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostILS",
+              "displayName": "supplierCostILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "orderType",
+              "displayName": "orderType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "goodsArrived",
+              "displayName": "goodsArrived",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostUSD",
+              "displayName": "supplierCostUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceUSD",
+              "displayName": "customerPriceUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        192
+      ],
+      "id": "8fb05f81-ecbd-465d-97ac-0e317c55a737",
+      "name": "admin_inventory_update",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1EbJwHp22aJnqq9XKb7Of7_2GCSfFz9N8bpGxmCJGXZc",
+          "mode": "list",
+          "cachedResultName": "Supplier_Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1EbJwHp22aJnqq9XKb7Of7_2GCSfFz9N8bpGxmCJGXZc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 934254563,
+          "mode": "list",
+          "cachedResultName": "Suppliers",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1EbJwHp22aJnqq9XKb7Of7_2GCSfFz9N8bpGxmCJGXZc/edit#gid=934254563"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "supplierId"
+          ],
+          "schema": [
+            {
+              "id": "supplierId",
+              "displayName": "supplierId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierName",
+              "displayName": "supplierName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contactEmail",
+              "displayName": "contactEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "paymentTerms",
+              "displayName": "paymentTerms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "leadTimeDays",
+              "displayName": "leadTimeDays",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "isDefense",
+              "displayName": "isDefense",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "shippingMethod",
+              "displayName": "shippingMethod",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        1024,
+        192
+      ],
+      "id": "689573d6-1059-4a0e-bc6e-14ec43b0095e",
+      "name": "admin_supplier_update",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ",
+          "mode": "list",
+          "cachedResultName": "Customer_Master_Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Customers",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "📊 Customer Master Data - Electro-Tech Representatives"
+          ],
+          "schema": [
+            {
+              "id": "CustomerID",
+              "displayName": "CustomerID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CompanyName",
+              "displayName": "CompanyName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CreditLimit",
+              "displayName": "CreditLimit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CreditUsed",
+              "displayName": "CreditUsed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "PaymentTerms",
+              "displayName": "PaymentTerms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pipeline",
+              "displayName": "pipeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStep",
+              "displayName": "currentStep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalSteps",
+              "displayName": "totalSteps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "poId",
+              "displayName": "poId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoteId",
+              "displayName": "quoteId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceId",
+              "displayName": "invoiceId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerId",
+              "displayName": "customerId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalAmountILS",
+              "displayName": "totalAmountILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceSent",
+              "displayName": "invoiceSent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nextAction",
+              "displayName": "nextAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "results",
+              "displayName": "results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "toolCallId",
+              "displayName": "toolCallId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "response",
+              "displayName": "response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "finalSummary",
+              "displayName": "finalSummary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "isDefense",
+              "displayName": "isDefense",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        848,
+        192
+      ],
+      "id": "9800d7c9-0dc6-411d-bc52-4aa99ee8425a",
+      "name": "admin_customer_update",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc",
+          "mode": "list",
+          "cachedResultName": "Inventory_Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 213906504,
+          "mode": "list",
+          "cachedResultName": "Stock",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc/edit#gid=213906504"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStock",
+              "displayName": "currentStock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reorderPoint",
+              "displayName": "reorderPoint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "safetyStock",
+              "displayName": "safetyStock",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierId",
+              "displayName": "supplierId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "leadTimeDays",
+              "displayName": "leadTimeDays",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "unitCost",
+              "displayName": "unitCost",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "warehouseLocation",
+              "displayName": "warehouseLocation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "lastUpdated",
+              "displayName": "lastUpdated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pipeline",
+              "displayName": "pipeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStep",
+              "displayName": "currentStep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalSteps",
+              "displayName": "totalSteps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "poId",
+              "displayName": "poId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoteId",
+              "displayName": "quoteId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceId",
+              "displayName": "invoiceId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerId",
+              "displayName": "customerId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalAmountILS",
+              "displayName": "totalAmountILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceSent",
+              "displayName": "invoiceSent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nextAction",
+              "displayName": "nextAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "results",
+              "displayName": "results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "toolCallId",
+              "displayName": "toolCallId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "update",
+              "displayName": "update",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "response",
+              "displayName": "response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "finalSummary",
+              "displayName": "finalSummary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceILS",
+              "displayName": "customerPriceILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostILS",
+              "displayName": "supplierCostILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "orderType",
+              "displayName": "orderType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "goodsArrived",
+              "displayName": "goodsArrived",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostUSD",
+              "displayName": "supplierCostUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceUSD",
+              "displayName": "customerPriceUSD",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        400,
+        176
+      ],
+      "id": "65c6423d-1083-4a64-a58e-cb512f2b8b26",
+      "name": "admin_new_part_append",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1voswgtKV-I_a9XahiE31qVd6wj6Jw7DP8d74yHMZgTU",
+          "mode": "list",
+          "cachedResultName": "Admin_Audit_Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1voswgtKV-I_a9XahiE31qVd6wj6Jw7DP8d74yHMZgTU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Audit2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1voswgtKV-I_a9XahiE31qVd6wj6Jw7DP8d74yHMZgTU/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "auditId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('auditId', ``, 'string') }}",
+            "timestamp": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('timestamp', ``, 'string') }}",
+            "sessionId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('sessionId', ``, 'string') }}",
+            "actionType": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('actionType', ``, 'string') }}",
+            "targetRecord": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('targetRecord', ``, 'string') }}",
+            "changesApplied": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('changesApplied', ``, 'string') }}",
+            "authorizationRequired": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('authorizationRequired', ``, 'string') }}",
+            "authorizationStatus": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('authorizationStatus', ``, 'string') }}",
+            "performedBy": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('performedBy', ``, 'string') }}",
+            "status": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('status', ``, 'string') }}",
+            "details": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('details', ``, 'string') }}",
+            "createdAt": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('createdAt', ``, 'string') }}",
+            "response": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('response', ``, 'string') }}",
+            "currentStep": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('currentStep', ``, 'string') }}",
+            "skipped": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('skipped', ``, 'string') }}",
+            "toolCallId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('toolCallId', ``, 'string') }}",
+            "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('summary', ``, 'string') }}",
+            "pipeline": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('pipeline', ``, 'string') }}",
+            "totalSteps": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('totalSteps', ``, 'string') }}",
+            "partNumber": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('partNumber', ``, 'string') }}",
+            "poId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('poId', ``, 'string') }}",
+            "quoteId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('quoteId', ``, 'string') }}",
+            "invoiceId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('invoiceId', ``, 'string') }}",
+            "customerId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('customerId', ``, 'string') }}",
+            "customerEmail": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('customerEmail', ``, 'string') }}",
+            "totalAmountILS": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('totalAmountILS', ``, 'string') }}",
+            "invoiceSent": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('invoiceSent', ``, 'string') }}",
+            "nextAction": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('nextAction', ``, 'string') }}",
+            "data": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('data', ``, 'string') }}",
+            "results": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('results', ``, 'string') }}",
+            "finalSummary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('finalSummary', ``, 'string') }}",
+            "quantity": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('quantity', ``, 'string') }}",
+            "customerPriceILS": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('customerPriceILS', ``, 'string') }}",
+            "supplierCostILS": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('supplierCostILS', ``, 'string') }}",
+            "orderType": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('orderType', ``, 'string') }}",
+            "decision": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('decision', ``, 'string') }}",
+            "goodsArrived": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('goodsArrived', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "auditId",
+              "displayName": "auditId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sessionId",
+              "displayName": "sessionId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "actionType",
+              "displayName": "actionType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "targetRecord",
+              "displayName": "targetRecord",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "changesApplied",
+              "displayName": "changesApplied",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "authorizationRequired",
+              "displayName": "authorizationRequired",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "authorizationStatus",
+              "displayName": "authorizationStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "performedBy",
+              "displayName": "performedBy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "createdAt",
+              "displayName": "createdAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "response",
+              "displayName": "response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currentStep",
+              "displayName": "currentStep",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "skipped",
+              "displayName": "skipped",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "toolCallId",
+              "displayName": "toolCallId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "pipeline",
+              "displayName": "pipeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalSteps",
+              "displayName": "totalSteps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "partNumber",
+              "displayName": "partNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "poId",
+              "displayName": "poId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoteId",
+              "displayName": "quoteId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceId",
+              "displayName": "invoiceId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerId",
+              "displayName": "customerId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerEmail",
+              "displayName": "customerEmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "totalAmountILS",
+              "displayName": "totalAmountILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoiceSent",
+              "displayName": "invoiceSent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nextAction",
+              "displayName": "nextAction",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "results",
+              "displayName": "results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "finalSummary",
+              "displayName": "finalSummary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "customerPriceILS",
+              "displayName": "customerPriceILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplierCostILS",
+              "displayName": "supplierCostILS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "orderType",
+              "displayName": "orderType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "goodsArrived",
+              "displayName": "goodsArrived",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        704,
+        192
+      ],
+      "id": "78e85a3b-dedb-4e1b-be34-4fdd31e5d397",
+      "name": "admin_audit_log",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "q8YyBKwHRoqlh4Er",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "yossi.yetmano@gmail.com",
+        "subject": "=Admin Action Required: {{ $json.actionType }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        576,
+        192
+      ],
+      "id": "9451bbdb-7259-433e-a9aa-ac68b06d3015",
+      "name": "admin_notify_ceo",
+      "webhookId": "ef4b0fb5-937d-4059-923f-a85905675531",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8uASS1H0jSJYE5FW",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "df293456-5896-4f5a-8d33-05da782b3aed",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "model": "gpt-oss:120b-cloud",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        96,
+        176
+      ],
+      "id": "bab748c6-f243-4af7-b6fc-17fc9404fd86",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "cJuJhTz0PqFxzhEB",
+          "name": "Ollama account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Admin_Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "admin_inventory_update": {
+      "ai_tool": [
+        [
+          {
+            "node": "Admin_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "admin_supplier_update": {
+      "ai_tool": [
+        [
+          {
+            "node": "Admin_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "admin_customer_update": {
+      "ai_tool": [
+        [
+          {
+            "node": "Admin_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "admin_new_part_append": {
+      "ai_tool": [
+        [
+          {
+            "node": "Admin_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "admin_audit_log": {
+      "ai_tool": [
+        [
+          {
+            "node": "Admin_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "admin_notify_ceo": {
+      "ai_tool": [
+        [
+          {
+            "node": "Admin_Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Admin_Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Admin_Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "70wXsnmVq4KlUDHv",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "786482df-0485-4fc1-a553-234b72f76db8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff69a37c5c8502060f16efbcef6be0f2a91421f1842e5cac5bf61ae7c3037c5a"
+  },
+  "nodeGroups": [],
+  "id": "wZusLQBqoRxOoFSF",
+  "tags": []
+}
