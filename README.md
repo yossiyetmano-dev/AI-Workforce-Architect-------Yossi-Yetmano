@@ -4,7 +4,7 @@
 Enterprise-grade Multi-Agent System built with **n8n**, **Ollama/OpenAI**, **Pinecone Vector Store**, and **Google Sheets** for automating supply chain workflows from RFQ to Invoice.
 
 ---
-* **Live Server Deployment:** https://n8n-production-c575.up.railway.app
+* **Live Server Deployment:** https://n8n-production-c575.up.railway.app/home/workflows
 ## 📌 Architecture & Key Features
 - **Snake Architecture**: Synchronous, one-way flow with sub-workflows for each agent.
 - **Dynamic Routing**: Orchestrator determines pipeline execution based on order type (RFQ, PO, RFI, NPI).
