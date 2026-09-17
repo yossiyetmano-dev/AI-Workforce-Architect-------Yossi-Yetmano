@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Multi-Agent Supply Chain Automation System - Project Completion & Review Document</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #2d3748;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #ffffff;
+        }
+        h1 {
+            color: #1a365d;
+            border-bottom: 3px solid #3182ce;
+            padding-bottom: 10px;
+            font-size: 28px;
+            margin-top: 30px;
+        }
+        h2 {
+            color: #2b6cb0;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+            font-size: 22px;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #2d3748;
+            font-size: 18px;
+            margin-top: 20px;
+        }
+        .doc-header {
+            background: linear-gradient(135deg, #1a365d 0%, #2b6cb0 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .doc-header h1 {
+            color: white;
+            border: none;
+            margin: 0;
+            padding: 0;
+            font-size: 32px;
+        }
+        .doc-header h2 {
+            color: #e2e8f0;
+            border: none;
+            margin: 10px 0 0 0;
+            font-size: 20px;
+            font-weight: normal;
+        }
+        .doc-header h3 {
+            color: #cbd5e0;
+            margin: 15px 0 0 0;
+            font-size: 16px;
+            font-weight: normal;
+        }
+        .status-badge {
+            display: inline-block;
+            background-color: #48bb78;
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            margin-top: 15px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #cbd5e0;
+            padding: 10px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f7fafc;
+            color: #2d3748;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        pre, code {
+            font-family: 'Consolas', 'Courier New', Courier, monospace;
+            background-color: #edf2f7;
+            border-radius: 4px;
+        }
+        pre {
+            padding: 15px;
+            overflow-x: auto;
+            border-left: 4px solid #3182ce;
+            font-size: 13px;
+        }
+        code {
+            padding: 2px 6px;
+            font-size: 13px;
+        }
+        ul, ol {
+            padding-left: 25px;
+        }
+        li {
+            margin-bottom: 6px;
+        }
+        .toc {
+            background-color: #f7fafc;
+            border: 1px solid #e2e8f0;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 25px 0;
+        }
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .toc li {
+            margin-bottom: 8px;
+        }
+        .toc a {
+            color: #2b6cb0;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .hr-custom {
+            border: 0;
+            height: 1px;
+            background: #e2e8f0;
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="doc-header">
+    <h1>Multi-Agent Supply Chain Automation System</h1>
+    <h2>Electro-Tech Representatives Ltd.</h2>
+    <h3>Project Completion & Review Document</h3>
+    <div class="status-badge">🟢 Complete & Production-Ready</div>
+</div>
+
+<div class="toc">
+    <h2>Table of Contents</h2>
+    <ul>
+        <li>1. Executive Summary</li>
+        <li>2. Company Background & Overview</li>
+        <li>3. Business Process Analysis</li>
+        <li>4. System Architecture</li>
+        <li>5. Agent Definitions & Responsibilities</li>
+        <li>6. Prompt Engineering - Detailed Prompts</li>
+        <li>7. n8n Workflow Architecture</li>
+        <li>8. Loop Prevention & Skip Handling</li>
+        <li>9. Data Model & Schemas</li>
+        <li>10. Implementation Review & Quality Assessment</li>
+        <li>11. Appendices</li>
+    </ul>
+</div>
+
+<hr class="hr-custom">
+
+<h1>1. Executive Summary</h1>
+<p>This project presents the implementation of a production-ready, enterprise-grade Multi-Agent System based on n8n, Ollama/OpenAI GPT models, Google Sheets, and Pinecone Vector Store for the automated management of an electronic components distribution company.</p>
+
+<h2>Design Principles:</h2>
+<ul>
+    <li><strong>Snake Architecture</strong>: Synchronous, one-way flow without Switch/Merge nodes</li>
+    <li><strong>Pipeline Routing</strong>: Orchestrator determines agent order based on request type</li>
+    <li><strong>Skip Conditions</strong>: Each agent can skip itself if not relevant</li>
+    <li><strong>Sub-Workflows</strong>: Each agent is an independent workflow called by the Orchestrator</li>
+    <li><strong>Google Sheets Backend</strong>: All customer data, price lists, and logs</li>
+    <li><strong>Human-in-the-Loop (HITL)</strong>: Approval workflow for high-value decisions</li>
+</ul>
+
+<h2>System includes 9 agents:</h2>
+<p><strong>Orchestrator → Technical → Pricing → CRM → Procurement → Logistics → Finance → Admin → HITL</strong></p>
+
+<h2>Results:</h2>
+<ul>
+    <li>✅ Full automated flow from RFQ to invoice</li>
+    <li>✅ Automatic handling of RFI (information requests)</li>
+    <li>✅ Smart routing based on Pipeline</li>
+    <li>✅ Complete logging for every action in Google Sheets</li>
+    <li>✅ Human approval for high-value POs ($30,000+)</li>
+    <li>✅ Vector store search for technical datasheets</li>
+    <li>✅ Robust error handling with CEO notifications</li>
+    <li>✅ Multi-currency support (USD suppliers, ILS customers)</li>
+</ul>
+
+<hr class="hr-custom">
+
+<h1>2. Company Background & Overview</h1>
+
+<h2>2.1 Company Profile</h2>
+<p><strong>Company Name:</strong> Electro-Tech Representatives Ltd. (Pseudonym)</p>
+<p><strong>Industry:</strong> Marketing, import, distribution, and technical support of advanced electronic components (processors, CMOS Image Sensors, ADC/DAC converters, optical transceivers, Ethernet switches, micro motors) for the defense and medical markets in Israel.</p>
+<p><strong>Business Model:</strong> Electro-Tech acts as an intermediary between global component manufacturers (suppliers) and Israeli customers (defense contractors, medical device companies, industrial manufacturers). The company purchases components in USD from suppliers and sells them in ILS to customers, adding markup and managing the entire supply chain from quote to invoice.</p>
+
+<h2>2.2 Existing Systems</h2>
+<table>
+    <thead>
+        <tr>
+            <th>System</th>
+            <th>Function</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Priority Cloud ERP</td><td>Core business operations</td></tr>
+        <tr><td>Google Sheets</td><td>Price lists, customers, suppliers, Audit Logs</td></tr>
+        <tr><td>Pinecone Vector Store</td><td>Technical datasheets</td></tr>
+        <tr><td>Gmail</td><td>Customer and supplier communication</td></tr>
+        <tr><td>Exchange Rate API</td><td>Currency conversion (USD → ILS)</td></tr>
+        <tr><td>Nipendo</td><td>Defense customer communication</td></tr>
+    </tbody>
+</table>
+
+<h2>2.3 Business Challenges Addressed</h2>
+<ol>
+    <li><strong>Manual Quote Processing</strong>: Sales team manually calculated prices using spreadsheets</li>
+    <li><strong>Slow PO Processing</strong>: Purchase orders required multiple hand-offs between departments</li>
+    <li><strong>Inconsistent Pricing</strong>: Markups and discounts applied inconsistently</li>
+    <li><strong>No Audit Trail</strong>: Limited visibility into order status and history</li>
+    <li><strong>Technical Information Access</strong>: Hard to find datasheets and technical specifications</li>
+</ol>
+
+<hr class="hr-custom">
+
+<h1>3. Business Process Analysis</h1>
+
+<h2>3.1 Main Flow - RFQ (Request for Quote)</h2>
+<pre>
+Customer sends request (Email / Webhook)
+         ↓
+Orchestrator: Identifies request type, determines Pipeline
+         ↓
+Technical Agent: Validates part number / RAG search
+         ↓
+Pricing Agent: Calculates price (USD → ILS)
+         ↓
+CRM Agent: Creates Quote, sends email, logs
+         ↓
+Admin Agent: Logs all information
+         ↓
+Complete: Email confirmation to customer
+</pre>
+
+<h2>3.2 Secondary Flow - PO (Purchase Order)</h2>
+<pre>
+Customer sends PO (Email / Webhook)
+         ↓
+Orchestrator: Identifies PO → PO Pipeline
+         ↓
+Pricing Agent: Validates price against Quote
+         ↓
+CRM Agent: Approves PO, sends email
+         ↓
+Procurement Agent: Creates PO to supplier (USD)
+         ↓
+Logistics Agent: Confirms goods receipt
+         ↓
+Finance Agent: Creates invoice (ILS), sends email
+         ↓
+Admin Agent: Logs all information
+         ↓
+Complete: Email confirmation to customer
+</pre>
+
+<h2>3.3 Third Flow - RFI (Request for Information)</h2>
+<pre>
+Customer sends technical information request
+         ↓
+Orchestrator: Identifies RFI → Pipeline: Technical → Admin
+         ↓
+Technical Agent: Searches Vector Store
+         ↓
+Admin Agent: Logs
+         ↓
+Complete: (No quote, no PO, no invoice)
+</pre>
+
+<h2>3.4 Fourth Flow - NPI (New Product Introduction)</h2>
+<pre>
+Supplier sends new part information
+         ↓
+Orchestrator: Identifies NPI → Pipeline: Technical → Admin
+         ↓
+Technical Agent: Validates part in catalog
+         ↓
+Admin Agent: Updates inventory master
+         ↓
+Complete: (No quote, no PO, no invoice)
+</pre>
+
+<hr class="hr-custom">
+
+<h1>4. System Architecture</h1>
+
+<h2>4.1 Snake Architecture Structure</h2>
+<pre>
+ORCHESTRATOR (MAIN WORKFLOW)
+
+Webhook / Gmail Trigger → Guardrail → Orchestrator (AI) → Code
+         ↓
+Call Technical → Code → Call Pricing → Code → Call CRM → Code
+         ↓
+Call Procurement → Code → Call Logistics → Code → Call Finance
+         ↓
+Code → Call Admin → Code → Email → Respond
+
+Each Agent = Independent Sub-Workflow
+Each Code Node = State transfer / Skip decision
+</pre>
+
+<h2>4.2 Pipeline Determination</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Request Type</th>
+            <th>Pipeline</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>RFI</td><td><code>["Technical", "Admin"]</code></td></tr>
+        <tr><td>RFQ</td><td><code>["Technical", "Pricing", "CRM", "Admin"]</code></td></tr>
+        <tr><td>PO</td><td><code>["Pricing", "CRM", "Procurement", "Logistics", "Finance", "Admin"]</code></td></tr>
+        <tr><td>NPI</td><td><code>["Technical", "Admin"]</code></td></tr>
+    </tbody>
+</table>
+
+<h2>4.3 Skip Logic</h2>
+<p>Each agent executes a Skip if:</p>
+<ul>
+    <li>It is not in the Pipeline</li>
+    <li>Request type is not relevant (e.g., Logistics in RFQ → SKIP)</li>
+    <li>Previous agent returned an error / Rejection</li>
+</ul>
+<p><strong>Example:</strong> In RFQ, Logistics, Finance, Procurement skip automatically.</p>
+
+<h2>4.4 Human-in-the-Loop (HITL) Architecture</h2>
+<pre>
+Agent Detects Need for Approval
+         ↓
+Call HITL_Approval_Manager Sub-Workflow
+         ↓
+Send Approval Email with Approve/Reject Buttons
+         ↓
+Wait for Human Response (Webhook)
+         ↓
+Capture Response → Resume Workflow
+         ↓
+APPROVED → Continue Execution
+REJECTED → Stop Execution
+</pre>
+<p><strong>Triggers for HITL Approval:</strong></p>
+<ul>
+    <li>Procurement Agent: <code>totalCostUSD > $30,000</code></li>
+    <li>CRM Agent: Credit limit exceeded OR price mismatch</li>
+    <li>Pricing Agent: Price override required</li>
+</ul>
+
+<h2>4.5 Error Handling Architecture</h2>
+<pre>
+Error Trigger (Catches ALL workflow errors)
+         ↓
+Code: Extract execution context (sessionId, workflowName, failedNode)
+         ↓
+Google Sheets: Log error to Admin_Audit_Log
+         ↓
+Gmail: Send error notification to CEO
+         ↓
+Complete: Error logged and reported
+</pre>
+
+<hr class="hr-custom">
+
+<h1>5. Agent Definitions & Responsibilities</h1>
+
+<h2>5.1 Orchestrator</h2>
+<table>
+    <tr><th>Role</th><td>Initial routing, Pipeline determination</td></tr>
+    <tr><th>AI Model</th><td>Ollama (gpt-oss:120b-cloud)</td></tr>
+    <tr><th>System Prompt</th><td>Chief Routing Orchestrator</td></tr>
+    <tr><th>Input</th><td>Email text + extracted fields</td></tr>
+    <tr><th>Output</th><td>Pipeline + Data</td></tr>
+</table>
+
+<h2>5.2 Technical Agent</h2>
+<table>
+    <tr><th>Role</th><td>Part validation / Vector Store search</td></tr>
+    <tr><th>AI Model</th><td>Ollama (gpt-oss:120b-cloud)</td></tr>
+    <tr><th>Tools</th><td><code>pricelist_lookup</code> (Google Sheets), <code>Answer questions with a vector store</code> (Pinecone)</td></tr>
+    <tr><th>Skip Condition</th><td>If orderType == "PO" → SKIP (already approved)</td></tr>
+    <tr><th>Output</th><td><code>{ status, partNumber, partName, manufacturer, technicalSummary }</code></td></tr>
+</table>
+
+<h2>5.3 Pricing Agent</h2>
+<table>
+    <tr><th>Role</th><td>Price calculation (USD → ILS)</td></tr>
+    <tr><th>AI Model</th><td>Ollama (gpt-oss:120b-cloud)</td></tr>
+    <tr><th>Tools</th><td><code>pricelist_lookup</code>, <code>currency_exchange_api</code></td></tr>
+    <tr><th>Skip Condition</th><td>If orderType == "RFI" → SKIP</td></tr>
+    <tr><th>Output</th><td><code>{ totalPriceILS, breakdown, calculationSummary }</code></td></tr>
+</table>
+
+<h2>5.4 CRM Agent</h2>
+<table>
+    <tr><th>Role</th><td>Quote creation / PO approval</td></tr>
+    <tr><th>AI Model</th><td>Ollama (gpt-oss:120b-cloud)</td></tr>
+    <tr><th>Tools</th><td><code>Customer_Master_Lookup</code>, <code>Log_Quote_To_Sheets</code>, <code>Lookup_Historical_Quote</code>, <code>Send a message in Gmail</code></td></tr>
+    <tr><th>Output</th><td><code>{ orderAccepted, creditStatus, nextAction }</code></td></tr>
+</table>
+
+<h2>5.5 Procurement Agent</h2>
+<table>
+    <tr><th>Role</th><td>PO creation to supplier in USD</td></tr>
+    <tr><th>AI Model</th><td>Ollama (gpt-oss:120b-cloud)</td></tr>
+    <tr><th>Tools</th><td><code>inventory_lookup</code>, <code>supplier_master_lookup</code>, <code>po_log_writer</code>, <code>send_supplier_po_email</code></td></tr>
+    <tr><th>Skip Condition</th><td>If orderType == "RFQ" or "RFI" → SKIP</td></tr>
+    <tr><th>Output</th><td><code>{ poId, unitCostUSD, totalCostUSD, supplierId }</code></td></tr>
+</table>
+
+<h2>5.6 Logistics Agent</h2>
+<table>
+    <tr><th>Role</th><td>Goods receipt, inventory update</td></tr>
+    <tr><th>AI Model</th><td>Ollama (gpt-oss:120b-cloud)</td></tr>
+    <tr><th>Tools</th><td><code>po_lookup</code>, <code>inventory_update</code>, <code>update_stock_tool</code>, <code>notify_customer</code></td></tr>
+    <tr><th>Skip Condition</th><td>If orderType == "RFQ" or "RFI" → SKIP</td></tr>
+    <tr><th>Output</th><td><code>{ warehouseStatus: "RECEIVED", newStockLevel, nextAction: "FINANCE" }</code></td></tr>
+</table>
+
+<h2>5.7 Finance Agent</h2>
+<table>
+    <tr><th>Role</th><td>Invoice creation (ILS), email sending</td></tr>
+    <tr><th>AI Model</th><td>Ollama (gpt-oss:120b-cloud)</td></tr>
+    <tr><th>Tools</th><td><code>customer_lookup_finance</code>, <code>order_value_lookup</code>, <code>currency_exchange_api</code>, <code>invoice_log_writer</code>, <code>send_invoice_email</code></td></tr>
+    <tr><th>Skip Condition</th><td>If orderType == "RFQ" or "RFI" → SKIP</td></tr>
+    <tr><th>Output</th><td><code>{ invoiceId, paymentTerms, dueDate, invoiceSent }</code></td></tr>
+</table>
+
+<h2>5.8 Admin Agent</h2>
+<table>
+    <tr><th>Role</th><td>All action logging</td></tr>
+    <tr><th>AI Model</th><td>Ollama (gpt-oss:120b-cloud)</td></tr>
+    <tr><th>Tools</th><td><code>admin_inventory_update</code>, <code>admin_customer_update</code>, <code>admin_supplier_update</code>, <code>admin_audit_log</code>, <code>admin_notify_ceo</code></td></tr>
+    <tr><th>Skip Condition</th><td>RFQ → only audit_log, no DB updates</td></tr>
+    <tr><th>Output</th><td><code>{ actionType, changesApplied, authorizationStatus }</code></td></tr>
+</table>
+
+<h2>5.9 HITL Approval Manager</h2>
+<table>
+    <tr><th>Role</th><td>Human-in-the-Loop approval system</td></tr>
+    <tr><th>Function</th><td>Sends approval emails with Approve/Reject buttons</td></tr>
+    <tr><th>Wait</th><td>Pauses workflow until human responds</td></tr>
+    <tr><th>Webhook</th><td>Captures response and resumes workflow</td></tr>
+    <tr><th>Output</th><td><code>{ approved, status, decisionTime }</code></td></tr>
+</table>
+
+<hr class="hr-custom">
+
+<h1>6. Prompt Engineering - Detailed Prompts</h1>
+
+<h2>6.1 Orchestrator Prompt - Key Sections</h2>
+<pre>
+You are the Chief Routing Orchestrator for Electro-Tech Representatives Ltd.
+
+Available Agents:
+- Technical: Validates parts in catalog / NPI check
+- Pricing: Calculates prices with markups and FX
+- CRM: Creates quotes, checks inventory
+- Procurement: Creates purchase orders with suppliers
+- Logistics: Manages shipping, import/export, and sets goodsArrived flag
+- Finance: Creates invoices and checks credit after goods arrive
+- Admin: System maintenance, database logging, and quote storage
+
+Pipeline Rules:
+- RFI: ["Technical", "Admin"]
+- RFQ: ["Technical", "Pricing", "CRM", "Admin"]
+- PO: ["Pricing", "CRM", "Procurement", "Logistics", "Finance", "Admin"]
+- NPI: ["Technical", "Admin"]
+</pre>
+
+<h2>6.2 Technical Agent Prompt - Key Sections</h2>
+<pre>
+You are the Lead Technical Validation Engineer for Electro-Tech Representatives Ltd.
+
+Tools:
+1. pricelist_lookup - Google Sheets catalog
+2. Answer questions with a vector store - Pinecone datasheets
+
+Rules:
+- If partNumber provided → check catalog
+- If partNumber missing → search vector store
+- PO requests → SKIP (already approved)
+- RFI requests → search vector store and return information
+
+Output: { status, partNumber, partName, manufacturer, technicalSummary }
+</pre>
+
+<h2>6.3 Pricing Agent Prompt - Key Sections</h2>
+<pre>
+You are the Computational Pricing Analyst for Electro-Tech Representatives Ltd.
+
+Steps:
+1. pricelist_lookup(partNumber) → base price
+2. currency_exchange_api(USD→ILS)
+3. Base Cost USD = Unit Price × Quantity
+4. Markup 30%
+5. Volume discounts (5-15%)
+6. Defense premium 10%, Urgent 5%
+7. Output: totalPriceILS, breakdown, calculationSummary
+
+Dynamic Business Rules (from Google Sheets):
+- base_markup_rate
+- discount_tier_1_qty, discount_tier_1_rate
+- discount_tier_2_qty, discount_tier_2_rate
+- discount_tier_3_qty, discount_tier_3_rate
+- defense_premium_rate
+- urgency_premium_rate
+</pre>
+
+<h2>6.4 Finance Agent Prompt - Key Sections</h2>
+<pre>
+You are the Enterprise Financial Controller for Electro-Tech Representatives Ltd.
+
+Core Rules:
+1. RFQ/SKIP → do not invoice
+2. Order/PO + goodsArrived=true → invoice
+3. ILS Only - no USD on invoices
+4. Payment terms: Net 30 (standard), Net 60 (defense)
+5. Due Date = Today + Payment Terms
+
+ILS Currency Rule: All customer-facing invoices must be in ILS (₪).
+Never write USD symbols ($) on the customer invoice.
+</pre>
+
+<h2>6.5 Admin Agent Prompt - Key Sections</h2>
+<pre>
+You are the Data Governance System Administrator for Electro-Tech Representatives Ltd.
+
+Tools:
+1. admin_inventory_update - Google Sheets
+2. admin_customer_update - Google Sheets
+3. admin_supplier_update - Google Sheets
+4. admin_audit_log - Google Sheets
+5. admin_notify_ceo - Gmail
+
+Rule: RFQ/SKIP → only audit_log, no other updates.
+Active Order/PO → execute corresponding update tools and log changes.
+</pre>
+
+<hr class="hr-custom">
+
+<h1>7. n8n Workflow Architecture</h1>
+
+<h2>7.1 Overall Structure</h2>
+<p><strong>Orchestrator (Workflow ID: LKD0u5yhSg9LFGl9):</strong></p>
+<pre>
+Gmail Trigger / Webhook → Guardrail → Orchestrator (AI) → Code → 
+Call Technical → Code → Call Pricing → Code → Call CRM → Code → 
+Call Procurement → Code → Call Logistics → Code → Call Finance → Code → 
+Call Admin → Code → Email → Respond
+</pre>
+<p><strong>Each Agent (Sub-Workflow):</strong></p>
+<pre>
+When Executed by Another Workflow → AI Agent → Code
+</pre>
+
+<h2>7.2 Sub-Workflow IDs</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Agent</th>
+            <th>Workflow ID</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Technical</td><td>3F3tWAxWNBfGCR9P</td></tr>
+        <tr><td>Pricing</td><td>cnyCoT1hcBzsDHR6</td></tr>
+        <tr><td>CRM</td><td>A4kgrXhIhEmzzpSg</td></tr>
+        <tr><td>Procurement</td><td>r8FJS8SkFQBdyc9T</td></tr>
+        <tr><td>Logistics</td><td>yhlLYUZhGPF2s8J2</td></tr>
+        <tr><td>Finance</td><td>3MC22hMIv1dvrYdR</td></tr>
+        <tr><td>Admin</td><td>wZusLQBqoRxOoFSF</td></tr>
+        <tr><td>HITL</td><td>s40rZ2yZ6Ez7utPD</td></tr>
+        <tr><td>Error Handler</td><td>70wXsnmVq4KlUDHv</td></tr>
+    </tbody>
+</table>
+
+<h2>7.3 State Management</h2>
+<p>State passes between Code Nodes:</p>
+<pre>
+{
+  "sessionId": "SESS-1234567890",
+  "pipeline": ["Technical", "Pricing", "CRM", "Admin"],
+  "currentStep": 1,
+  "totalSteps": 4,
+  "partNumber": "9GA1248P4G0011",
+  "quantity": 150,
+  "customerId": "CUST-017",
+  "customerEmail": "procurement@mellanox-tech.co.il",
+  "orderType": "RFQ",
+  "isDefense": true,
+  "isUrgent": false,
+  "results": {}
+}
+</pre>
+
+<h2>7.4 Skip Logic in Code Nodes</h2>
+<p><strong>Code Node 3 (after Technical):</strong></p>
+<pre>
+const isRFI = ["RFI", "INFORMATION", "DATASHEET", "CATALOG"].includes(orderType);
+const hasPricing = pipeline.includes("Pricing");
+
+if (isRFI || !hasPricing) {
+  // SKIP - passes through without calling Pricing
+  return [{ json: { ...$json, decision: "SKIP" } }];
+}
+</pre>
+
+<h2>7.5 Complete Node List & Connections</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Order</th>
+            <th>Node</th>
+            <th>Type</th>
+            <th>Function</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>1</td><td>Gmail Trigger</td><td>Trigger</td><td>Listens for incoming emails</td></tr>
+        <tr><td>2</td><td>Webhook</td><td>Trigger</td><td>Receives HTTP requests</td></tr>
+        <tr><td>3</td><td>Guardrail_Filter</td><td>Code</td><td>Filters out non-supply-chain emails</td></tr>
+        <tr><td>4</td><td>Guardrail_Filter1</td><td>Code</td><td>Filters webhook requests</td></tr>
+        <tr><td>5</td><td>Code in JavaScript1</td><td>Code</td><td>Extracts email data (subject, body, part number, quantity)</td></tr>
+        <tr><td>6</td><td>Get_Business_Rules1</td><td>Google Sheets</td><td>Loads dynamic rules from Business_Rules sheet</td></tr>
+        <tr><td>7</td><td>Get_Business_Rules</td><td>Code</td><td>Processes business rules into object</td></tr>
+        <tr><td>8</td><td>Init_Session</td><td>Google Sheets</td><td>Creates session_id and logs to Session_Store</td></tr>
+        <tr><td>9</td><td>Orchestrator</td><td>AI Agent</td><td>Determines Pipeline based on request type</td></tr>
+        <tr><td>10</td><td>Code in JavaScript2</td><td>Code</td><td>Prepares state for Technical Agent</td></tr>
+        <tr><td>11</td><td>Call 'Technical_Agent'</td><td>Sub-Workflow</td><td>Executes Technical Agent</td></tr>
+        <tr><td>12</td><td>Code in JavaScript3</td><td>Code</td><td>Processes Technical response / SKIP</td></tr>
+        <tr><td>13</td><td>Call 'Pricing_Agent'</td><td>Sub-Workflow</td><td>Executes Pricing Agent</td></tr>
+        <tr><td>14</td><td>Code in JavaScript4</td><td>Code</td><td>Processes Pricing response / SKIP</td></tr>
+        <tr><td>15</td><td>Update_Session_Pricing</td><td>Google Sheets</td><td>Updates session state after Pricing</td></tr>
+        <tr><td>16</td><td>Call 'CRM_Agent'</td><td>Sub-Workflow</td><td>Executes CRM Agent</td></tr>
+        <tr><td>17</td><td>Update_Session_CRM</td><td>Google Sheets</td><td>Updates session state after CRM</td></tr>
+        <tr><td>18</td><td>If</td><td>Code</td><td>Checks if PO or RFQ</td></tr>
+        <tr><td>19</td><td>Code in JavaScript5</td><td>Code</td><td>Processes CRM response / SKIP</td></tr>
+        <tr><td>20</td><td>Call 'Procurement_Agent'</td><td>Sub-Workflow</td><td>Executes Procurement Agent</td></tr>
+        <tr><td>21</td><td>If1</td><td>Code</td><td>Checks if procurement succeeded</td></tr>
+        <tr><td>22</td><td>Code in JavaScript6</td><td>Code</td><td>Processes Procurement response / SKIP</td></tr>
+        <tr><td>23</td><td>Update_Session_Procurement</td><td>Google Sheets</td><td>Updates session state after Procurement</td></tr>
+        <tr><td>24</td><td>Prepare_For_Logistic</td><td>Code</td><td>Prepares data for Logistics Agent</td></tr>
+        <tr><td>25</td><td>Call 'Logistic_Agent'</td><td>Sub-Workflow</td><td>Executes Logistics Agent</td></tr>
+        <tr><td>26</td><td>Code in JavaScript7</td><td>Code</td><td>Processes Logistics response / SKIP</td></tr>
+        <tr><td>27</td><td>Call 'Finance_Agent'</td><td>Sub-Workflow</td><td>Executes Finance Agent</td></tr>
+        <tr><td>28</td><td>Code in JavaScript8</td><td>Code</td><td>Processes Finance response / SKIP</td></tr>
+        <tr><td>29</td><td>Call 'Admin_Agent'</td><td>Sub-Workflow</td><td>Executes Admin Agent</td></tr>
+        <tr><td>30</td><td>Code in JavaScript9</td><td>Code</td><td>Final state preparation</td></tr>
+        <tr><td>31</td><td>Send a message</td><td>Gmail</td><td>Sends completion email</td></tr>
+        <tr><td>32</td><td>Respond to Webhook</td><td>Respond</td><td>Returns response to webhook</td></tr>
+    </tbody>
+</table>
+
+<hr class="hr-custom">
+
+<h1>8. Loop Prevention & Skip Handling</h1>
+
+<h2>8.1 Protection Mechanisms</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Mechanism</th>
+            <th>Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Pipeline</td><td>Orchestrator pre-determines execution order</td></tr>
+        <tr><td>Skip Conditions</td><td>Each agent checks if relevant</td></tr>
+        <tr><td>State Tracking</td><td>currentStep, totalSteps - prevents boundary violations</td></tr>
+        <tr><td>Session ID</td><td>Unique identifier for each run</td></tr>
+        <tr><td>Guardrail</td><td>Initial filtering of irrelevant emails</td></tr>
+        <tr><td>No Recursion</td><td>Each agent is called once, in sequence</td></tr>
+        <tr><td>Error Workflow</td><td>Separate error handling workflow prevents cascading failures</td></tr>
+    </tbody>
+</table>
+
+<h2>8.2 Skip Examples</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Scenario</th>
+            <th>Agent</th>
+            <th>Decision</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>RFQ</td><td>Procurement</td><td>SKIP</td></tr>
+        <tr><td>RFQ</td><td>Logistics</td><td>SKIP</td></tr>
+        <tr><td>RFQ</td><td>Finance</td><td>SKIP</td></tr>
+        <tr><td>PO</td><td>Technical</td><td>SKIP</td></tr>
+        <tr><td>RFI</td><td>Pricing, CRM, Procurement, Logistics, Finance</td><td>SKIP</td></tr>
+    </tbody>
+</table>
+
+<h2>8.3 Skip Flow Example (RFQ)</h2>
+<pre>
+Orchestrator → Pipeline: ["Technical", "Pricing", "CRM", "Admin"]
+         ↓
+Technical Agent: Runs
+         ↓
+Code Node 3: Checks pipeline → hasPricing = true → Continue
+         ↓
+Pricing Agent: Runs
+         ↓
+Code Node 4: Checks pipeline → hasCRM = true → Continue
+         ↓
+CRM Agent: Runs
+         ↓
+Code Node 5: Checks pipeline → hasProcurement = false → SKIP
+         ↓
+Code Node 6: Logs SKIP → passes to Logistics
+         ↓
+Code Node 6: Checks pipeline → hasLogistics = false → SKIP
+         ↓
+Code Node 7: Logs SKIP → passes to Finance
+         ↓
+Code Node 7: Checks pipeline → hasFinance = false → SKIP
+         ↓
+Code Node 8: Logs SKIP → passes to Admin
+         ↓
+Admin Agent: Runs
+         ↓
+Complete
+</pre>
+
+<hr class="hr-custom">
+
+<h1>9. Data Model & Schemas</h1>
+
+<h2>9.1 Input (From Orchestrator)</h2>
+<pre>
+{
+  "sessionId": "SESS-1234567890",
+  "pipeline": ["Technical", "Pricing", "CRM", "Admin"],
+  "data": {
+    "partNumber": "9GA1248P4G0011",
+    "quantity": 150,
+    "customerId": "CUST-017",
+    "customerEmail": "procurement@mellanox-tech.co.il",
+    "orderType": "RFQ",
+    "isDefense": true,
+    "isUrgent": false
+  }
+}
+</pre>
+
+<h2>9.2 State (Passed Between Code Nodes)</h2>
+<pre>
+{
+  "sessionId": "SESS-1234567890",
+  "pipeline": ["Technical", "Pricing", "CRM", "Admin"],
+  "currentStep": 2,
+  "totalSteps": 4,
+  "partNumber": "9GA1248P4G0011",
+  "quantity": 150,
+  "customerId": "CUST-017",
+  "customerEmail": "procurement@mellanox-tech.co.il",
+  "orderType": "RFQ",
+  "isDefense": true,
+  "isUrgent": false,
+  "totalPriceILS": 31053.75,
+  "results": {
+    "Technical": { "status": "APPROVED" },
+    "Pricing": { "totalPriceILS": 31053.75 }
+  }
+}
+</pre>
+
+<h2>9.3 Google Sheets Schemas</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Sheet</th>
+            <th>Columns</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Customer_Master</td><td>CustomerID, CompanyName, Email, CreditLimit, CreditUsed, PaymentTerms</td></tr>
+        <tr><td>Pricelist_Master</td><td>partNumber, description, unitPrice, stock</td></tr>
+        <tr><td>Supplier_Master</td><td>supplierId, supplierName, contactEmail, paymentTerms</td></tr>
+        <tr><td>Inventory_Master</td><td>partNumber, currentStock, reorderPoint, supplierId</td></tr>
+        <tr><td>Admin_Audit_Log</td><td>auditId, sessionId, actionType, status, response</td></tr>
+        <tr><td>Quotes_Log</td><td>quoteId, sessionId, customerId, partNumber, totalPriceILS, validUntil</td></tr>
+        <tr><td>Purchase_Orders</td><td>poId, sessionId, partNumber, quantity, supplierId, totalCost</td></tr>
+        <tr><td>Invoices</td><td>invoiceId, sessionId, customerId, totalAmountILS, dueDate</td></tr>
+        <tr><td>Session_Store</td><td>session_id, created_at, updated_at, status, current_step, order_type, partNumber, quantity, session_payload</td></tr>
+        <tr><td>Business_Rules</td><td>Rule_Key, Value, Description</td></tr>
+    </tbody>
+</table>
+
+<h2>9.4 Business Rules Schema</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Rule Key</th>
+            <th>Description</th>
+            <th>Example Value</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>base_markup_rate</td><td>Standard markup on supplier cost</td><td>0.30</td></tr>
+        <tr><td>discount_tier_1_qty</td><td>Quantity threshold for Tier 1</td><td>1000</td></tr>
+        <tr><td>discount_tier_1_rate</td><td>Discount for ≥ Tier 1</td><td>0.00</td></tr>
+        <tr><td>discount_tier_2_qty</td><td>Quantity threshold for Tier 2</td><td>5000</td></tr>
+        <tr><td>discount_tier_2_rate</td><td>Discount for ≥ Tier 2</td><td>0.05</td></tr>
+        <tr><td>discount_tier_3_qty</td><td>Quantity threshold for Tier 3</td><td>10000</td></tr>
+        <tr><td>discount_tier_3_rate</td><td>Discount for ≥ Tier 3</td><td>0.10</td></tr>
+        <tr><td>defense_premium_rate</td><td>Additional markup for defense</td><td>0.10</td></tr>
+        <tr><td>urgency_premium_rate</td><td>Additional markup for urgent</td><td>0.05</td></tr>
+    </tbody>
+</table>
+
+<hr class="hr-custom">
+
+<h1>10. Implementation Review & Quality Assessment</h1>
+
+<h2>10.1 Architecture Review</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Component</th>
+            <th>Status</th>
+            <th>Notes</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Orchestrator</td><td>✅ Production-Ready</td><td>Smart routing with pipeline determination</td></tr>
+        <tr><td>Technical Agent</td><td>✅ Production-Ready</td><td>Vector store + catalog lookup</td></tr>
+        <tr><td>Pricing Agent</td><td>✅ Production-Ready</td><td>Dynamic business rules + multi-currency</td></tr>
+        <tr><td>CRM Agent</td><td>✅ Production-Ready</td><td>Quote creation + PO validation</td></tr>
+        <tr><td>Procurement Agent</td><td>✅ Production-Ready</td><td>USD supplier PO creation</td></tr>
+        <tr><td>Logistics Agent</td><td>✅ Production-Ready</td><td>Goods receipt + inventory update</td></tr>
+        <tr><td>Finance Agent</td><td>✅ Production-Ready</td><td>ILS invoicing + payment terms</td></tr>
+        <tr><td>Admin Agent</td><td>✅ Production-Ready</td><td>Full audit logging</td></tr>
+        <tr><td>HITL Approval Manager</td><td>✅ Production-Ready</td><td>Email-based approval workflow</td></tr>
+        <tr><td>Error Handler</td><td>✅ Production-Ready</td><td>Global error catching + notifications</td></tr>
+        <tr><td>Guardrails</td><td>✅ Production-Ready</td><td>Email + webhook filtering</td></tr>
+    </tbody>
+</table>
+
+<h2>10.2 Integration Review</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Integration</th>
+            <th>Status</th>
+            <th>Notes</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Google Sheets</td><td>✅ Working</td><td>9 sheets integrated</td></tr>
+        <tr><td>Pinecone Vector Store</td><td>✅ Working</td><td>Technical datasheet search</td></tr>
+        <tr><td>Gmail</td><td>✅ Working</td><td>Quotes, POs, invoices, approvals</td></tr>
+        <tr><td>Ollama/OpenAI</td><td>✅ Working</td><td>LLM agents</td></tr>
+        <tr><td>Exchange Rate API</td><td>✅ Working</td><td>USD → ILS conversion</td></tr>
+    </tbody>
+</table>
+
+<h2>10.3 Strengths</h2>
+<ol>
+    <li><strong>Complete Multi-Agent System</strong>: All 9 agents working together</li>
+    <li><strong>Dynamic Business Rules</strong>: Loaded from Google Sheets, no hardcoding</li>
+    <li><strong>Human-in-the-Loop</strong>: HITL for high-value decisions</li>
+    <li><strong>Vector Search (RAG)</strong>: Technical datasheet search</li>
+    <li><strong>Robust Error Handling</strong>: Global error catcher + notifications</li>
+    <li><strong>Full Audit Trail</strong>: All actions logged to Google Sheets</li>
+    <li><strong>Multi-Currency</strong>: USD for suppliers, ILS for customers</li>
+    <li><strong>Clean Architecture</strong>: Snake architecture with clear data flow</li>
+</ol>
+
+<h2>10.4 Recommendations for Production</h2>
+<ol>
+    <li><strong>Environment Variables</strong>: Move credentials to environment variables</li>
+    <li><strong>Model Selection</strong>: Consider OpenAI <code>gpt-4</code> for better reliability</li>
+    <li><strong>Monitoring</strong>: Add observability (e.g., Sentry, DataDog)</li>
+    <li><strong>Testing</strong>: Write integration tests for each agent</li>
+    <li><strong>Rate Limiting</strong>: Add rate limiting for API calls</li>
+    <li><strong>Retry Logic</strong>: Add retry for transient failures</li>
+    <li><strong>SLA Monitoring</strong>: Track time per agent</li>
+    <li><strong>Documentation</strong>: Update with production deployment details</li>
+</ol>
+
+<hr class="hr-custom">
+
+<h1>11. Appendices</h1>
+
+<h2>Appendix A: Webhook Addresses</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Use</th>
+            <th>URL</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Orchestrator (Webhook)</td><td><code>http://localhost:5678/webhook/Orchestrator</code></td></tr>
+        <tr><td>Orchestrator (Gmail)</td><td>Gmail Trigger - Polling</td></tr>
+        <tr><td>HITL Approval</td><td><code>http://localhost:5678/webhook/5b8ea3e5-ef7a-4e06-8a23-567f3845b915</code></td></tr>
+    </tbody>
+</table>
+
+<h2>Appendix B: Environment Variables</h2>
+<pre>
+# OpenAI
+OPENAI_API_KEY=sk-...
+
+# Ollama
+OLLAMA_HOST=http://localhost:11434
+
+# Google Sheets
+GOOGLE_SHEETS_CREDENTIALS=...
+
+# Gmail
+GMAIL_OAUTH2=...
+
+# Pinecone
+PINECONE_API_KEY=...
+PINECONE_INDEX=final-project
+
+# Exchange Rate API
+EXCHANGE_RATE_URL=https://api.exchangeratesapi.io/latest
+</pre>
+
+<h2>Appendix C: Tool Matrix</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Agent</th>
+            <th>Tools</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Orchestrator</td><td>None (LLM only)</td></tr>
+        <tr><td>Technical</td><td><code>pricelist_lookup</code>, <code>Answer questions with a vector store</code></td></tr>
+        <tr><td>Pricing</td><td><code>pricelist_lookup</code>, <code>currency_exchange_api</code></td></tr>
+        <tr><td>CRM</td><td><code>Customer_Master_Lookup</code>, <code>Log_Quote_To_Sheets</code>, <code>Lookup_Historical_Quote</code>, <code>Send a message in Gmail</code></td></tr>
+        <tr><td>Procurement</td><td><code>inventory_lookup</code>, <code>supplier_master_lookup</code>, <code>po_log_writer</code>, <code>send_supplier_po_email</code></td></tr>
+        <tr><td>Logistics</td><td><code>po_lookup</code>, <code>inventory_update</code>, <code>update_stock_tool</code>, <code>notify_customer</code></td></tr>
+        <tr><td>Finance</td><td><code>customer_lookup_finance</code>, <code>order_value_lookup</code>, <code>currency_exchange_api</code>, <code>invoice_log_writer</code>, <code>send_invoice_email</code></td></tr>
+        <tr><td>Admin</td><td><code>admin_inventory_update</code>, <code>admin_customer_update</code>, <code>admin_supplier_update</code>, <code>admin_audit_log</code>, <code>admin_notify_ceo</code></td></tr>
+        <tr><td>HITL</td><td><code>Send Approval Email</code>, <code>Wait</code>, <code>Respond to Webhook</code></td></tr>
+    </tbody>
+</table>
+
+<h2>Appendix D: Pipeline Examples</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Request Type</th>
+            <th>Pipeline</th>
+            <th>Agents That Run</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>RFI</td><td><code>["Technical", "Admin"]</code></td><td>Technical, Admin</td></tr>
+        <tr><td>RFQ</td><td><code>["Technical", "Pricing", "CRM", "Admin"]</code></td><td>Technical, Pricing, CRM, Admin</td></tr>
+        <tr><td>PO</td><td><code>["Pricing", "CRM", "Procurement", "Logistics", "Finance", "Admin"]</code></td><td>Pricing, CRM, Procurement, Logistics, Finance, Admin</td></tr>
+        <tr><td>NPI</td><td><code>["Technical", "Admin"]</code></td><td>Technical, Admin</td></tr>
+    </tbody>
+</table>
+
+<h2>Appendix E: Google Sheets IDs</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Sheet</th>
+            <th>Sheet ID</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Inventory_Master</td><td><code>1f-K5h5sPZLxa8BaAWC7mlpcR-NfudgVR90RAmIlO5Nc</code></td></tr>
+        <tr><td>Customer_Master</td><td><code>1YTdPVG58VkuTD0fgMgM12bPcH2XV7VuptlpmYjQmkKQ</code></td></tr>
+        <tr><td>Supplier_Master</td><td><code>1EbJwHp22aJnqq9XKb7Of7_2GCSfFz9N8bpGxmCJGXZc</code></td></tr>
+        <tr><td>Pricelist_Master</td><td><code>1Pw0xxKeBU9XfSNqCtSzFUXd10BofGOaJPYKB69D7gUg</code></td></tr>
+        <tr><td>Purchase_Orders</td><td><code>1vdU0bxogA7E27-t-9Ck6yu6FqUxAl_qE8ddyA5zosnc</code></td></tr>
+        <tr><td>Admin_Audit_Log</td><td><code>1voswgtKV-I_a9XahiE31qVd6wj6Jw7DP8d74yHMZgTU</code></td></tr>
+        <tr><td>Quotes_Log</td><td><code>1nOWZuz_SEG66As25EFVnUyA4dOR1adANfGHjGZ4UUMo</code></td></tr>
+        <tr><td>Invoices</td><td><code>1Cc7iKvSY1vSeLjabR6YJwU7Wsbbb3CuXD8eSU4nKLqA</code></td></tr>
+    </tbody>
+</table>
+
+<hr class="hr-custom">
+
+<h1>System Status Summary</h1>
+<table>
+    <thead>
+        <tr>
+            <th>Component</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td>Orchestrator</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Technical Agent</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Pricing Agent</td><td>✅ Production-Ready</td></tr>
+        <tr><td>CRM Agent</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Procurement Agent</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Logistics Agent</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Finance Agent</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Admin Agent</td><td>✅ Production-Ready</td></tr>
+        <tr><td>HITL Approval Manager</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Error Handler</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Google Sheets Integration</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Pinecone Vector Store</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Gmail Integration</td><td>✅ Production-Ready</td></tr>
+        <tr><td>Exchange Rate API</td><td>✅ Production-Ready</td></tr>
+    </tbody>
+</table>
+
+<div style="text-align: center; margin-top: 40px; padding: 20px; background-color: #f0fff4; border: 2px solid #38a169; border-radius: 8px;">
+    <h2 style="color: #276749; border: none; margin: 0;">🟢 Project Completed Successfully - Ready for Production!</h2>
+    <p style="margin-top: 10px; margin-bottom: 0;">
+        <strong>Project submitted by:</strong> Yossi Yetmano<br>
+        <strong>Date:</strong> August 19, 2026<br>
+        <strong>Course:</strong> AI Workforce Architect - No Code<br>
+        <strong>Status:</strong> 🟢 <strong>Complete & Production-Ready</strong>
+    </p>
+</div>
+
+</body>
+</html>
